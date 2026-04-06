@@ -3,6 +3,8 @@
 // Runtime types generated with workerd@1.20260317.1 2025-09-02 nodejs_compat
 declare namespace Cloudflare {
 	interface Env {
+		CF_ACCOUNT_ID: string;
+		CF_API_TOKEN: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

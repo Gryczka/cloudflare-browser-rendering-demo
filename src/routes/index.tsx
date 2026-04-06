@@ -1,118 +1,175 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router';
 import {
-  Zap,
-  Server,
-  Route as RouteIcon,
-  Shield,
-  Waves,
-  Sparkles,
-} from 'lucide-react'
+  Camera,
+  FileDown,
+  Code,
+  FileText,
+  Scissors,
+  Brain,
+  Link2,
+  Layers,
+  Globe,
+} from 'lucide-react';
+import { Callout } from '../components/Callout';
 
-export const Route = createFileRoute('/')({ component: App })
+export const Route = createFileRoute('/')({ component: Home });
 
-function App() {
-  const features = [
-    {
-      icon: <Zap className="w-12 h-12 text-cyan-400" />,
-      title: 'Powerful Server Functions',
-      description:
-        'Write server-side code that seamlessly integrates with your client components. Type-safe, secure, and simple.',
-    },
-    {
-      icon: <Server className="w-12 h-12 text-cyan-400" />,
-      title: 'Flexible Server Side Rendering',
-      description:
-        'Full-document SSR, streaming, and progressive enhancement out of the box. Control exactly what renders where.',
-    },
-    {
-      icon: <RouteIcon className="w-12 h-12 text-cyan-400" />,
-      title: 'API Routes',
-      description:
-        'Build type-safe API endpoints alongside your application. No separate backend needed.',
-    },
-    {
-      icon: <Shield className="w-12 h-12 text-cyan-400" />,
-      title: 'Strongly Typed Everything',
-      description:
-        'End-to-end type safety from server to client. Catch errors before they reach production.',
-    },
-    {
-      icon: <Waves className="w-12 h-12 text-cyan-400" />,
-      title: 'Full Streaming Support',
-      description:
-        'Stream data from server to client progressively. Perfect for AI applications and real-time updates.',
-    },
-    {
-      icon: <Sparkles className="w-12 h-12 text-cyan-400" />,
-      title: 'Next Generation Ready',
-      description:
-        'Built from the ground up for modern web applications. Deploy anywhere JavaScript runs.',
-    },
-  ]
+const features = [
+  {
+    icon: Camera,
+    title: 'Screenshot',
+    description:
+      'Capture PNG, WebP, or JPEG screenshots of any webpage. Supports full-page capture and custom viewports.',
+    to: '/screenshot',
+    endpoint: '/screenshot',
+  },
+  {
+    icon: FileDown,
+    title: 'PDF Generation',
+    description:
+      'Generate PDF documents from URLs or custom HTML. Configure page format, orientation, and background printing.',
+    to: '/pdf',
+    endpoint: '/pdf',
+  },
+  {
+    icon: Code,
+    title: 'HTML Content',
+    description:
+      'Fetch the fully-rendered HTML of a page after JavaScript execution. Get the DOM as the browser sees it.',
+    to: '/content',
+    endpoint: '/content',
+  },
+  {
+    icon: FileText,
+    title: 'Markdown Extraction',
+    description:
+      'Convert any webpage into clean Markdown format. Ideal for feeding content into LLMs and RAG pipelines.',
+    to: '/markdown',
+    endpoint: '/markdown',
+  },
+  {
+    icon: Scissors,
+    title: 'Web Scraping',
+    description:
+      'Extract structured data from specific HTML elements using CSS selectors. Get text, HTML, and attributes.',
+    to: '/scrape',
+    endpoint: '/scrape',
+  },
+  {
+    icon: Brain,
+    title: 'AI JSON Extraction',
+    description:
+      'Use AI to extract structured data from any webpage. Define output with a prompt or JSON schema.',
+    to: '/json',
+    endpoint: '/json',
+  },
+  {
+    icon: Link2,
+    title: 'Link Discovery',
+    description:
+      'Retrieve all links from a webpage. Useful for site mapping, SEO analysis, and content discovery.',
+    to: '/links',
+    endpoint: '/links',
+  },
+  {
+    icon: Layers,
+    title: 'Snapshot',
+    description:
+      'Capture both the rendered HTML and a screenshot in a single request. Two outputs, one API call.',
+    to: '/snapshot',
+    endpoint: '/snapshot',
+  },
+  {
+    icon: Globe,
+    title: 'Crawl',
+    description:
+      'Crawl entire websites with a single API call. Follow links, respect robots.txt, and return content in multiple formats.',
+    to: '/crawl',
+    endpoint: '/crawl',
+    badge: 'BETA',
+  },
+] as const;
 
+function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-      <section className="relative py-20 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10"></div>
-        <div className="relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <img
-              src="/tanstack-circle-logo.png"
-              alt="TanStack Logo"
-              className="w-24 h-24 md:w-32 md:h-32"
-            />
-            <h1 className="text-6xl md:text-7xl font-black text-white [letter-spacing:-0.08em]">
-              <span className="text-gray-300">TANSTACK</span>{' '}
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                START
-              </span>
-            </h1>
-          </div>
-          <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-light">
-            The framework for next generation AI applications
-          </p>
-          <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-8">
-            Full-stack framework powered by TanStack Router for React and Solid.
-            Build modern applications with server functions, streaming, and type
-            safety.
-          </p>
-          <div className="flex flex-col items-center gap-4">
-            <a
-              href="https://tanstack.com/start"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-8 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-cyan-500/50"
-            >
-              Documentation
-            </a>
-            <p className="text-gray-400 text-sm mt-2">
-              Begin your TanStack Start journey by editing{' '}
-              <code className="px-2 py-1 bg-slate-700 rounded text-cyan-400">
-                /src/routes/index.tsx
-              </code>
-            </p>
-          </div>
+    <div className="max-w-5xl mx-auto">
+      {/* Hero */}
+      <div className="mb-10">
+        <h1 className="text-5xl font-bold tracking-tight text-cf-text mb-3">
+          Browser Rendering
+        </h1>
+        <p className="text-xl text-cf-text-muted max-w-2xl">
+          Run headless Chrome on Cloudflare's global network. Capture
+          screenshots, generate PDFs, scrape content, extract structured data
+          with AI, and crawl entire websites.
+        </p>
+        <div className="flex gap-4 mt-6">
+          <a
+            href="https://developers.cloudflare.com/browser-rendering/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-base btn-primary"
+          >
+            Documentation
+          </a>
+          <a
+            href="https://developers.cloudflare.com/browser-rendering/rest-api/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-base btn-ghost"
+          >
+            REST API Reference
+          </a>
         </div>
-      </section>
+      </div>
 
-      <section className="py-16 px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/10"
+      {/* Endpoints Grid */}
+      <div className="mb-8">
+        <h2 className="text-[10px] font-medium text-cf-text-subtle uppercase tracking-wider mb-4">
+          REST API Endpoints
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {features.map((feature) => (
+            <Link
+              key={feature.to}
+              to={feature.to}
+              className="group block rounded-xl border border-cf-border bg-cf-bg-200 p-5 shadow-card transition-all hover:border-cf-orange/50 hover:shadow-lg"
             >
-              <div className="mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold text-white mb-3">
-                {feature.title}
-              </h3>
-              <p className="text-gray-400 leading-relaxed">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="rounded-lg bg-cf-orange-light p-2 text-cf-orange transition-colors group-hover:bg-cf-orange group-hover:text-white">
+                  <feature.icon size={20} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-cf-text group-hover:text-cf-orange transition-colors">
+                      {feature.title}
+                    </h3>
+                    {'badge' in feature && feature.badge && (
+                      <span className="font-mono text-[10px] text-cf-orange">
+                        {feature.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-mono text-cf-text-subtle mt-0.5">
+                    {feature.endpoint}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-cf-text-muted leading-relaxed">
                 {feature.description}
               </p>
-            </div>
+            </Link>
           ))}
         </div>
-      </section>
+      </div>
+
+      {/* Info */}
+      <Callout>
+        <strong className="text-cf-text">Getting started:</strong> Each demo
+        page lets you try the Browser Rendering REST API interactively. Enter a
+        URL, click Run, and see the results. The API calls are proxied through
+        the Worker backend using your configured Cloudflare API token.
+      </Callout>
     </div>
-  )
+  );
 }

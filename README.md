@@ -1,193 +1,254 @@
-Welcome to your new TanStack Start app! 
+# Cloudflare Browser Rendering API Demo
 
-# Getting Started
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Gryczka/cloudflare-browser-rendering-demo)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Powered by Cloudflare Workers](https://img.shields.io/badge/Powered%20by-Cloudflare%20Workers-F38020)](https://workers.cloudflare.com)
 
-To run this application:
+An interactive demo application showcasing every endpoint of the [Cloudflare Browser Rendering REST API](https://developers.cloudflare.com/browser-rendering/rest-api/). Built with [TanStack Start](https://tanstack.com/start) on [Cloudflare Workers](https://workers.cloudflare.com).
+
+**Live demo:** https://cloudflare-browser-rendering-demo.dwarven.workers.dev/
+
+---
+
+[![Cloudflare Browser Rendering Demo screenshot](docs/screenshot.png)](https://cloudflare-browser-rendering-demo.dwarven.workers.dev/)
+
+---
+
+## What This Demonstrates
+
+This project is a hands-on walkthrough of the [Cloudflare Browser Rendering API](https://developers.cloudflare.com/browser-rendering/), structured as an interactive playground where you can try every endpoint directly in your browser.
+
+| Concept | What You Learn |
+| --- | --- |
+| **Browser Rendering REST API** | How to use Cloudflare's headless Chrome service via simple HTTP calls — screenshots, PDFs, content extraction, AI-powered JSON extraction, and full-site crawling |
+| **Cloudflare Workers** | Serverless TypeScript running on Cloudflare's global edge network (300+ locations) |
+| **TanStack Start** | Full-stack React framework with server functions that run natively on Workers |
+| **Server Functions** | Type-safe RPC-style calls from the browser to the Worker backend — no manual API routes needed |
+| **The Proxy Pattern** | How a Worker authenticates with the Cloudflare API on behalf of the user, keeping secrets server-side |
+| **Vite + Cloudflare Plugin** | Modern dev experience with HMR, using `@cloudflare/vite-plugin` for seamless Worker development |
+
+Each demo page lets you enter a URL, click **Run**, and see the API response in real time — with the exact request body and timing visible in the UI.
+
+---
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Browser["Browser (Client)"]
+        UI["React UI<br/><small>TanStack Router</small>"]
+    end
+
+    subgraph CF["Cloudflare Workers Runtime"]
+        Worker["TanStack Start Worker<br/><small>Server Functions</small>"]
+    end
+
+    subgraph CFAPI["Cloudflare API"]
+        BR["Browser Rendering<br/>REST API"]
+    end
+
+    subgraph Chrome["Cloudflare Network"]
+        HC["Headless Chrome<br/><small>Managed by Cloudflare</small>"]
+    end
+
+    subgraph Target["Internet"]
+        Web["Target Websites"]
+    end
+
+    UI -- "Server Function Call<br/>(RPC over HTTP)" --> Worker
+    Worker -- "REST API Call<br/>(Bearer token auth)" --> BR
+    BR -- "Spawns browser session" --> HC
+    HC -- "Navigates & renders" --> Web
+    HC -- "Returns result<br/>(screenshot, PDF, HTML, JSON...)" --> BR
+    BR -- "API response" --> Worker
+    Worker -- "Typed response" --> UI
+
+    style Browser fill:#fffbf5,stroke:#ebd5c1,color:#521000
+    style CF fill:#fff7ed,stroke:#ff4801,color:#521000
+    style CFAPI fill:#fff7ed,stroke:#ff4801,color:#521000
+    style Chrome fill:#fef3e2,stroke:#eab308,color:#521000
+    style Target fill:#f0fdf4,stroke:#16a34a,color:#14532d
+```
+
+**How it works:**
+
+1. The user interacts with the React UI (TanStack Router handles client-side routing)
+2. Each demo page calls a **TanStack Start server function** — these execute on the Worker, not in the browser
+3. The server function makes an authenticated REST API call to the Cloudflare Browser Rendering API
+4. Cloudflare spins up a headless Chrome instance, navigates to the target URL, and performs the requested action
+5. The result (screenshot bytes, PDF, HTML, Markdown, structured JSON, etc.) flows back through the Worker to the UI
+
+The Worker acts as a **thin proxy** — its only job is to inject the API token and forward the request. All secrets stay server-side.
+
+---
+
+## API Endpoints
+
+The demo covers every endpoint in the Browser Rendering REST API:
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/screenshot` | POST | Capture PNG, WebP, or JPEG screenshots with full-page and custom viewport support |
+| `/pdf` | POST | Generate PDF documents from URLs or raw HTML |
+| `/content` | POST | Fetch fully-rendered HTML after JavaScript execution |
+| `/markdown` | POST | Convert any webpage to clean Markdown (great for LLMs and RAG pipelines) |
+| `/scrape` | POST | Extract structured data from specific elements using CSS selectors |
+| `/json` | POST | AI-powered structured data extraction using a prompt or JSON schema |
+| `/links` | POST | Discover all links on a page — useful for site mapping and SEO analysis |
+| `/snapshot` | POST | Capture both a screenshot and rendered HTML in a single request |
+| `/crawl` | POST | Start an asynchronous multi-page crawl with configurable depth and limits |
+| `/crawl/:jobId` | GET | Poll crawl job status and retrieve results |
+
+---
+
+## Project Structure
+
+```
+.
+├── src/
+│   ├── server/
+│   │   └── browser-rendering.ts    # All 10 server functions — the core API proxy layer
+│   ├── routes/
+│   │   ├── __root.tsx              # Root layout: sidebar + main content + status bar
+│   │   ├── index.tsx               # Home page with endpoint grid
+│   │   ├── screenshot.tsx          # Screenshot demo page
+│   │   ├── pdf.tsx                 # PDF generation demo
+│   │   ├── content.tsx             # HTML content demo
+│   │   ├── markdown.tsx            # Markdown extraction demo
+│   │   ├── scrape.tsx              # Web scraping demo
+│   │   ├── json.tsx                # AI JSON extraction demo
+│   │   ├── links.tsx               # Link discovery demo
+│   │   ├── snapshot.tsx            # Snapshot (screenshot + HTML) demo
+│   │   ├── crawl.tsx               # Async crawl demo with polling
+│   │   └── slides.tsx              # Built-in presentation mode
+│   ├── components/
+│   │   ├── Sidebar.tsx             # Navigation sidebar
+│   │   ├── DemoPage.tsx            # Shared layout for all demo routes
+│   │   ├── CodeBlock.tsx           # Syntax-highlighted code display
+│   │   ├── CrawlExplorer.tsx       # Rich crawl results viewer
+│   │   ├── ResultToolbar.tsx       # Copy/download toolbar for results
+│   │   └── ...                     # Badge, Callout, PillButton, StatusBadge, etc.
+│   ├── slides/                     # 15-slide presentation system
+│   │   ├── slides.ts               # Slide registry and metadata
+│   │   ├── content/                # Individual slide content (one file per slide)
+│   │   └── components/             # Slide layout, reveal animations, progress bar
+│   ├── __tests__/                  # Vitest test suite
+│   │   ├── components/             # Component tests (DemoPage, CodeBlock, etc.)
+│   │   └── server/                 # Server function tests (all 10 endpoints)
+│   ├── router.tsx                  # TanStack Router configuration
+│   └── styles.css                  # Tailwind CSS v4 + custom Cloudflare design tokens
+├── public/                         # Static assets (favicons, logos)
+├── docs/
+│   └── screenshot.png              # Demo UI screenshot
+├── wrangler.jsonc                  # Wrangler configuration
+├── vite.config.ts                  # Vite config with Cloudflare + TanStack plugins
+├── vitest.config.ts                # Test runner configuration
+├── tsconfig.json                   # TypeScript configuration
+├── worker-configuration.d.ts       # Auto-generated Worker type definitions
+├── .dev.vars.example               # Template for local environment variables
+└── package.json
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- A [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (installed via `npm install`)
+
+### Local Development
 
 ```bash
+# 1. Clone the repo
+git clone https://github.com/Gryczka/cloudflare-browser-rendering-demo.git
+cd cloudflare-browser-rendering-demo
+
+# 2. Install dependencies
 npm install
+
+# 3. Set up your environment variables
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars and add your Cloudflare Account ID and API Token
+# (Find your Account ID at https://dash.cloudflare.com → any zone → Overview → right sidebar)
+# (Create an API Token at https://dash.cloudflare.com/profile/api-tokens)
+
+# 4. Generate TypeScript types for your Worker bindings
+npm run cf-typegen
+
+# 5. Start the dev server
 npm run dev
 ```
 
-# Building For Production
+The dev server starts at `http://localhost:3000`. The Cloudflare Vite plugin simulates the Workers runtime locally, so server functions execute in a real Worker environment.
 
-To build this application for production:
-
-```bash
-npm run build
-```
-
-## Testing
-
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+### Running Tests
 
 ```bash
 npm run test
 ```
 
-## Styling
+Tests cover all 10 server functions and key UI components using Vitest + Testing Library.
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+---
 
-### Removing Tailwind CSS
+## Deploy to Cloudflare
 
-If you prefer not to use Tailwind CSS:
+```bash
+# 1. Set your secrets
+npx wrangler secret put CF_ACCOUNT_ID
+npx wrangler secret put CF_API_TOKEN
 
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `npm install @tailwindcss/vite tailwindcss -D`
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
+# 2. Deploy
+npm run deploy
 ```
 
-Then anywhere in your JSX you can use it like so:
+Wrangler bundles the TypeScript, uploads the Worker script, and deploys static assets — all in one command. Your app will be available at `https://cloudflare-browser-rendering-demo.<your-subdomain>.workers.dev`.
 
-```tsx
-<Link to="/about">About</Link>
-```
+---
 
-This will create a link that will navigate to the `/about` route.
+## Key Concepts
 
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
+### Cloudflare Browser Rendering
 
-### Using A Layout
+[Browser Rendering](https://developers.cloudflare.com/browser-rendering/) gives you access to headless Chrome instances running on Cloudflare's network. Instead of managing browser infrastructure yourself, you make REST API calls and Cloudflare handles the browser lifecycle. Use cases include:
 
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
+- **Screenshots & PDFs** — visual capture of any webpage
+- **Content extraction** — get fully-rendered HTML/Markdown after JavaScript execution
+- **Structured data** — AI-powered extraction of typed JSON from unstructured pages
+- **Web crawling** — automated multi-page discovery with configurable depth
 
-Here is an example layout that includes a header:
+### TanStack Start Server Functions
 
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+[Server functions](https://tanstack.com/start/latest/docs/framework/react/server-functions) are TypeScript functions that execute on the server but are called from the client like regular async functions. In this project, every Browser Rendering API call is wrapped in a server function (see `src/server/browser-rendering.ts`), which:
 
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
+1. Reads the API credentials from environment variables (never exposed to the client)
+2. Constructs the REST API request with proper authentication
+3. Returns the typed response to the React component
 
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
+This is the **proxy pattern** — the Worker sits between the browser and the Cloudflare API, keeping secrets safe while providing a clean typed interface.
 
-## Server Functions
+### The Cloudflare Vite Plugin
 
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
+The [`@cloudflare/vite-plugin`](https://developers.cloudflare.com/workers/frameworks/framework-guides/vite-plugin/) integrates Workers into the Vite dev server. Server functions run in a real Workers runtime (via Miniflare) during development, so `process.env`, KV bindings, and other Worker APIs work identically in dev and production.
 
-```tsx
-import { createServerFn } from '@tanstack/react-start'
+---
 
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
+## Built with Generative AI
 
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
+This project was built extensively with the assistance of generative AI tools, including [Claude](https://claude.ai) (Anthropic) via [OpenCode](https://opencode.ai). AI was used throughout the development process:
 
-## API Routes
+- **Application code** — Server functions, React components, TanStack Router integration, and the slide presentation system
+- **UI/UX design** — The Cloudflare-themed design system, component architecture, and interactive demo pages
+- **Test suite** — Vitest tests covering all server functions and key components
+- **Documentation** — This README, architecture diagrams, and inline code comments
 
-You can create API routes by using the `server` property in your route definitions:
+The human author directed the design, reviewed and tested all outputs, and made all final decisions about content and structure.
 
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
+---
 
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
+## License
 
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+[MIT](LICENSE)

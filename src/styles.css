@@ -1,15 +1,281 @@
 @import "tailwindcss";
 
-body {
-  @apply m-0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@theme {
+  --color-*: initial;
+  --color-black: #000;
+
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* CF Workers palette */
+  --color-cf-orange: #ff4801;
+  --color-cf-orange-hover: #ff7038;
+  --color-cf-orange-light: oklch(from #ff4801 l c h / 8%);
+
+  --color-cf-text: #521000;
+  --color-cf-text-muted: oklch(from #521000 l c h / 78%);
+  --color-cf-text-subtle: oklch(from #521000 l c h / 56%);
+
+  --color-cf-bg-page: #f5f1eb;
+  --color-cf-bg-100: #fffbf5;
+  --color-cf-bg-200: #fffdfb;
+  --color-cf-bg-300: #fef7ed;
+
+  --color-cf-border: #ebd5c1;
+  --color-cf-border-light: oklch(from #ebd5c1 l c h / 50%);
+
+  --color-cf-success: #16a34a;
+  --color-cf-error: #dc2626;
+  --color-cf-info: #2563eb;
+  --color-cf-warning: #eab308;
+  --color-cf-ai: #9616ff;
+
+  /* Dark inset surfaces (output, terminal, code) */
+  --color-surface-dark: #2a1a0e;
+  --color-surface-dark-border: #3d2a18;
+  --color-surface-dark-text: #f5ede0;
+  --color-surface-dark-muted: #e8d5c4;
+  --color-surface-dark-dim: #7a6a58;
+  --color-surface-dark-error: #fca5a5;
+  --color-surface-dark-info: #93c5fd;
+  --color-surface-dark-success: #86efac;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px oklch(from #521000 l c h / 4%), 0 4px 12px oklch(from #521000 l c h / 2%);
+  --shadow-focus: 0 0 0 3px oklch(from #ff4801 l c h / 20%);
+
+  /* Easings */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-button: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Animation */
+  --animate-panel-in: panel-in 0.4s var(--ease-entrance) forwards;
+  --animate-fade-in: fade-in 0.3s var(--ease-out) forwards;
+  --animate-slide-in: slide-in 0.2s var(--ease-out) forwards;
+
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 oklch(from #16a34a l c h / 35%);
+    }
+    50% {
+      opacity: 0.6;
+      box-shadow: 0 0 0 4px oklch(from #16a34a l c h / 0%);
+    }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-    monospace;
+/* sugar-high style syntax highlighting tokens → CF theme colors */
+:root {
+  --sh-keyword: var(--color-cf-ai);
+  --sh-string: var(--color-cf-success);
+  --sh-comment: var(--color-cf-text-subtle);
+  --sh-class: var(--color-cf-warning);
+  --sh-identifier: var(--color-cf-text);
+  --sh-sign: var(--color-cf-text-muted);
+  --sh-property: var(--color-cf-orange);
+  --sh-entity: var(--color-cf-info);
+  --sh-jsxliterals: var(--color-cf-text-muted);
 }
+
+@layer base {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-cf-bg-page);
+    color: var(--color-cf-text);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: oklch(from #ff4801 l c h / 20%);
+    color: var(--color-cf-text);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-cf-orange);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-cf-border);
+    border-radius: 3px;
+  }
+}
+
+/* Dark-surface selection override */
+@utility dark-surface {
+  background-color: var(--color-surface-dark);
+  color: var(--color-surface-dark-text);
+
+  &::selection,
+  & ::selection {
+    background: oklch(from #ff4801 l c h / 40%);
+    color: #fff;
+  }
+}
+
+/* Dot pattern background */
+@utility dot-pattern {
+  background-image: radial-gradient(circle, var(--color-cf-border) 0.75px, transparent 0.75px);
+  background-size: 12px 12px;
+}
+
+/* ── Button utilities ── */
+
+/* Shared base for all buttons */
+@utility btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  line-height: 1;
+  padding: 0.625rem 1.25rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  &:active:not(:disabled) {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+/* Primary button: orange bg, white text */
+@utility btn-primary {
+  background-color: var(--color-cf-orange);
+  color: #fff;
+  border: 1px solid var(--color-cf-orange);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-cf-orange-hover);
+    border-color: var(--color-cf-orange-hover);
+  }
+}
+
+/* Ghost button: cream bg, warm border, dashed on hover */
+@utility btn-ghost {
+  background-color: var(--color-cf-bg-200);
+  color: var(--color-cf-text);
+  border: 1px solid var(--color-cf-border);
+
+  &:hover:not(:disabled) {
+    border-style: dashed;
+    border-color: var(--color-cf-orange);
+    color: var(--color-cf-text);
+  }
+}
+
+/* Preset/tag button: small, mono, pill */
+@utility btn-preset {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.75rem;
+  background-color: var(--color-cf-bg-200);
+  color: var(--color-cf-text-muted);
+  border: 1px solid var(--color-cf-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-style: dashed;
+    border-color: var(--color-cf-orange);
+    color: var(--color-cf-text);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px) scale(0.98);
+  }
+}
+
+/* Form input */
+@utility input-field {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  background-color: var(--color-cf-bg-200);
+  color: var(--color-cf-text);
+  border: 1px solid var(--color-cf-border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:focus {
+    border-color: var(--color-cf-orange);
+    box-shadow: 0 0 0 3px oklch(from #ff4801 l c h / 20%);
+  }
+
+  &::placeholder {
+    color: var(--color-cf-text-subtle);
+  }
+}
+
+/* Code block syntax coloring (for our custom SyntaxHighlight) */
+.code-keyword { color: #9616ff; }
+.code-const { color: #2563eb; }
+.code-string { color: #16a34a; }
+.code-comment { color: oklch(from #521000 l c h / 56%); }
+.code-function { color: #eab308; }
+.code-type { color: #2563eb; }
+.code-property { color: #ff4801; }
+.code-number { color: #16a34a; }
+.code-operator { color: oklch(from #521000 l c h / 78%); }

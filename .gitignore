@@ -15,3 +15,7 @@ todos.json
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# Auto-generated files
+src/routeTree.gen.ts
+.cta.json
