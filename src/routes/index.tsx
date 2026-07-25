@@ -10,6 +10,7 @@ import {
   Layers,
   Globe,
   Accessibility,
+  Plug,
 } from 'lucide-react';
 import { Callout } from '../components/Callout';
 
@@ -97,6 +98,15 @@ const features = [
     to: '/crawl',
     endpoint: '/crawl',
     badge: 'BETA',
+  },
+  {
+    icon: Plug,
+    title: 'Binding vs REST',
+    description:
+      'The same Quick Action over REST with a bearer token, and through env.BROWSER.quickAction() with no token at all.',
+    to: '/binding',
+    endpoint: 'env.BROWSER',
+    badge: 'NEW',
   },
 ] as const;
 

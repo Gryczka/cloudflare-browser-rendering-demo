@@ -451,6 +451,91 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
     };
   });
 
+// ─── Binding vs REST ─────────────────────────────────────────────────
+
+/**
+ * The same Quick Action, run two ways, so the difference is visible.
+ *
+ * The REST path is what the rest of this app uses: read a secret, build an
+ * absolute URL, attach a bearer token, make an outbound HTTP request that
+ * leaves Cloudflare's network and comes back.
+ *
+ * The binding path (`env.BROWSER.quickAction()`, added 2026-05-28) needs no
+ * account id, no token, and no external hop. It requires a compatibility date
+ * of 2026-03-24 or later, and `remote: true` on the binding for local dev —
+ * without that the local runtime throws
+ * `The RPC receiver does not implement the method "quickAction"`.
+ *
+ * Both return the same envelope, so the comparison is honest.
+ */
+export const compareBindingAndRest = createServerFn({ method: 'POST' })
+  .inputValidator((data: { url: string }) => data)
+  .handler(async ({ data }) => {
+    await enforceRateLimit('quickAction');
+
+    const url = assertPublicHttpUrl(data.url);
+
+    async function viaRest() {
+      const started = Date.now();
+      const { result, browserMs } = await callQuickAction<string>(
+        '/markdown',
+        { url },
+        'Markdown fetch (REST)'
+      );
+      return {
+        markdown: result,
+        browserMs,
+        wallMs: Date.now() - started,
+        error: null as string | null,
+      };
+    }
+
+    async function viaBinding() {
+      const started = Date.now();
+      const binding = (env as unknown as { BROWSER?: BrowserRun }).BROWSER;
+
+      if (!binding) {
+        return {
+          markdown: null,
+          browserMs: null,
+          wallMs: 0,
+          error:
+            'No BROWSER binding is configured. Add a `browser` binding to wrangler.jsonc.',
+        };
+      }
+
+      try {
+        const response = await binding.quickAction('markdown', { url });
+
+        if (!response.ok) {
+          throw await toApiError(response, 'Markdown fetch (binding)');
+        }
+
+        const envelope = (await response.json()) as Envelope<string>;
+        return {
+          markdown: envelope.result,
+          browserMs: readBrowserMs(response),
+          wallMs: Date.now() - started,
+          error: null as string | null,
+        };
+      } catch (e: any) {
+        return {
+          markdown: null,
+          browserMs: null,
+          wallMs: Date.now() - started,
+          error: e?.message ?? 'Binding call failed',
+        };
+      }
+    }
+
+    // Sequential rather than parallel: two concurrent renders of the same URL
+    // would double the billed browser time for no extra insight.
+    const rest = await viaRest();
+    const binding = await viaBinding();
+
+    return { rest, binding, identical: rest.markdown === binding.markdown };
+  });
+
 // ─── Accessibility tree ──────────────────────────────────────────────
 
 /**

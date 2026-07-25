@@ -14,6 +14,18 @@
 		"enabled": true
 	},
 	/**
+	 * Browser Run binding.
+	 *
+	 * `remote: true` is required for `env.BROWSER.quickAction()` in local dev —
+	 * the method is not implemented by the local runtime, and without it you get
+	 * `The RPC receiver does not implement the method "quickAction"`. It means
+	 * local dev consumes real browser time on the account.
+	 */
+	"browser": {
+		"binding": "BROWSER",
+		"remote": true
+	},
+	/**
 	 * Rate limiting for a public, unauthenticated demo.
 	 *
 	 * Two namespaces so an expensive crawl cannot consume the budget for

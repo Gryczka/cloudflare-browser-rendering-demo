@@ -107,8 +107,8 @@ Every Quick Action available over REST is covered. Still to come: the
 half of the product — Puppeteer/Playwright/CDP control, plus
 [Live View](https://developers.cloudflare.com/browser-run/features/live-view/)
 and [session recording](https://developers.cloudflare.com/browser-run/features/session-recording/) —
-and the `env.BROWSER.quickAction()` binding, which removes the API token and the
-external HTTP hop entirely.
+The `env.BROWSER.quickAction()` binding is covered on the **Binding vs REST**
+page, which runs the same Quick Action both ways and diffs the output.
 
 Two details worth knowing if you build against these:
 
@@ -224,6 +224,25 @@ npm run dev
 ```
 
 The dev server starts at `http://localhost:3000`. The Cloudflare Vite plugin simulates the Workers runtime locally, so server functions execute in a real Worker environment.
+
+#### A note on the browser binding in local dev
+
+`env.BROWSER.quickAction()` is not implemented by the local runtime, so the
+binding is declared with `"remote": true`. That has two consequences worth
+knowing:
+
+1. **Local dev consumes real browser time** on the account, because the call is
+   tunnelled to Cloudflare rather than emulated.
+2. **If your Wrangler login has access to more than one account, `vite dev` will
+   hang on `Establishing remote connection...`** while it waits to disambiguate.
+   Set the account explicitly:
+
+   ```bash
+   CLOUDFLARE_ACCOUNT_ID=<your_account_id> npm run dev
+   ```
+
+Everything except the Binding vs REST page works without this, since the other
+pages go over REST.
 
 ### Running Tests
 

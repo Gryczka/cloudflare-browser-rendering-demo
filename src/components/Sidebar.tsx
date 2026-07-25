@@ -11,6 +11,7 @@ import {
   Layers,
   Globe,
   Accessibility,
+  Plug,
 } from 'lucide-react';
 
 const CF_LOGO = (
@@ -39,6 +40,12 @@ const navSections = [
       { num: '08', label: 'Snapshot', to: '/snapshot', icon: Layers },
       { num: '09', label: 'A11y Tree', to: '/accessibility', icon: Accessibility, badge: 'NEW' },
       { num: '10', label: 'Crawl', to: '/crawl', icon: Globe, badge: 'BETA' },
+    ],
+  },
+  {
+    label: 'Workers Binding',
+    items: [
+      { num: '11', label: 'Binding vs REST', to: '/binding', icon: Plug, badge: 'NEW' },
     ],
   },
 ] as const;
