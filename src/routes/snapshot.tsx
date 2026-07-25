@@ -24,7 +24,8 @@ const apiCode = `const resp = await fetch(
     }),
   }
 );
-// Returns: { screenshot: base64, content: html }`;
+const { result } = await resp.json();
+// result: { content: '<html>...', screenshot: 'iVBORw0KGgo...' }`;
 
 const pills = [
   { label: 'example.com', value: 'https://example.com' },
@@ -40,7 +41,7 @@ function SnapshotDemo() {
   const [html, setHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'screenshot' | 'html' | 'preview'>(
     'screenshot'
   );

@@ -1,10 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import DemoPage from '../components/DemoPage';
 import StatusBadge from '../components/StatusBadge';
 import PillButton from '../components/PillButton';
 import CrawlExplorer from '../components/CrawlExplorer';
-import { startCrawl, getCrawlStatus } from '../server/browser-rendering';
+import {
+  startCrawl,
+  getCrawlStatus,
+  type CrawlJob,
+  type CrawlRecord,
+} from '../server/browser-rendering';
+import { CRAWL_CEILINGS } from '../shared/limits';
 
 export const Route = createFileRoute('/crawl')({ component: CrawlDemo });
 
@@ -62,16 +68,22 @@ function CrawlDemo() {
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [records, setRecords] = useState<any[]>([]);
-  const [jobMeta, setJobMeta] = useState<any>(null);
+  const [records, setRecords] = useState<Array<CrawlRecord>>([]);
+  const [jobMeta, setJobMeta] = useState<CrawlJob | null>(null);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
-  const [skippedRecords, setSkippedRecords] = useState<any[]>([]);
+  const [skippedRecords, setSkippedRecords] = useState<Array<CrawlRecord>>([]);
+  const [appliedOptions, setAppliedOptions] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Set on unmount so in-flight polls stop touching state. */
+  const cancelledRef = useRef(false);
 
   const handleFormatToggle = (fmt: string) => {
     setFormats((prev) =>
@@ -90,38 +102,47 @@ function CrawlDemo() {
   const pollStatus = useCallback(
     async (id: string) => {
       try {
-        const res = await getCrawlStatus({ data: { jobId: id } });
-        const result = res.result as any;
-        const data = result?.result || result;
+        const { job, browserMs: ms } = await getCrawlStatus({
+          data: { jobId: id },
+        });
 
-        setJobMeta(data);
-        setBrowserMs(res.browserMs);
+        // The component may have unmounted while this request was in flight.
+        if (cancelledRef.current) return;
 
-        if (data?.records) {
-          setRecords(data.records);
-        }
+        setJobMeta(job);
+        setBrowserMs(ms);
+        setRecords(job?.records ?? []);
+        setStatus(job?.status ?? 'unknown');
 
-        const jobStatus = data?.status || 'unknown';
-        setStatus(jobStatus);
-
-        if (
-          jobStatus === 'complete' ||
-          jobStatus === 'completed' ||
-          jobStatus === 'failed'
-        ) {
+        // Anything other than `running` is terminal: completed, errored,
+        // cancelled_by_user, cancelled_due_to_limits, cancelled_due_to_timeout.
+        if (job?.status && job.status !== 'running') {
           stopPolling();
           return;
         }
 
-        // Keep polling
         pollingRef.current = setTimeout(() => pollStatus(id), 3000);
       } catch (e: any) {
+        if (cancelledRef.current) return;
         setError(e.message);
         stopPolling();
       }
     },
     [stopPolling]
   );
+
+  // Without this, navigating away mid-crawl leaves the recursive setTimeout
+  // running and calling setState on an unmounted component.
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, []);
 
   const handleStart = async () => {
     if (!url.trim()) return;
@@ -134,6 +155,7 @@ function CrawlDemo() {
     setBrowserMs(null);
     setSkippedRecords([]);
     setShowSkipped(false);
+    setAppliedOptions(null);
     stopPolling();
 
     try {
@@ -151,7 +173,7 @@ function CrawlDemo() {
           .filter(Boolean);
       }
 
-      const res = await startCrawl({
+      const { jobId: id, browserMs: ms, appliedOptions } = await startCrawl({
         data: {
           url,
           limit,
@@ -164,23 +186,20 @@ function CrawlDemo() {
         },
       });
 
-      const result = res.result as any;
-      // The crawl API returns { success: true, result: "job-id-string" }
-      // After server fn wrapping: res.result = { success: true, result: "job-id-string" }
-      const id =
-        typeof result?.result === 'string'
-          ? result.result
-          : result?.result?.id || result?.id || (typeof result === 'string' ? result : null);
-      if (id) {
-        setJobId(id);
-        setStatus('running');
-        setPolling(true);
-        setBrowserMs(res.browserMs);
-        // Start polling
-        pollingRef.current = setTimeout(() => pollStatus(id), 2000);
-      } else {
-        setError('No job ID returned. Response: ' + JSON.stringify(result));
+      // The server clamps limit/depth and forces render/crawlPurposes. Reflect
+      // what was actually submitted so the form does not lie about the request.
+      setAppliedOptions(appliedOptions);
+
+      if (!id) {
+        setError('Crawl started but no job ID was returned.');
+        return;
       }
+
+      setJobId(id);
+      setStatus('running');
+      setPolling(true);
+      setBrowserMs(ms);
+      pollingRef.current = setTimeout(() => pollStatus(id), 2000);
     } catch (e: any) {
       setError(e.message || 'Crawl start failed');
     } finally {
@@ -191,12 +210,10 @@ function CrawlDemo() {
   const handleShowSkipped = async () => {
     if (!jobId) return;
     try {
-      const res = await getCrawlStatus({
+      const { job } = await getCrawlStatus({
         data: { jobId, status: 'skipped' },
       });
-      const result = res.result as any;
-      const data = result?.result || result;
-      setSkippedRecords(data?.records || []);
+      setSkippedRecords(job?.records ?? []);
       setShowSkipped(true);
     } catch (e: any) {
       setError(e.message);
@@ -247,28 +264,34 @@ function CrawlDemo() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-medium text-cf-text-muted mb-1">
-                Page Limit
+                Page Limit{' '}
+                <span className="text-cf-text-subtle">
+                  (max {CRAWL_CEILINGS.maxLimit})
+                </span>
               </label>
               <input
                 type="number"
                 value={limit}
                 onChange={(e) => setLimit(Number(e.target.value))}
                 min={1}
-                max={100000}
-                className="w-full px-3 py-2 rounded-lg border border-cf-border bg-white text-sm"
+                max={CRAWL_CEILINGS.maxLimit}
+                className="w-full px-3 py-2 rounded-lg border border-cf-border bg-cf-bg-200 text-sm"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-cf-text-muted mb-1">
-                Depth
+                Depth{' '}
+                <span className="text-cf-text-subtle">
+                  (max {CRAWL_CEILINGS.maxDepth})
+                </span>
               </label>
               <input
                 type="number"
                 value={depth}
                 onChange={(e) => setDepth(Number(e.target.value))}
                 min={1}
-                max={100000}
-                className="w-full px-3 py-2 rounded-lg border border-cf-border bg-white text-sm"
+                max={CRAWL_CEILINGS.maxDepth}
+                className="w-full px-3 py-2 rounded-lg border border-cf-border bg-cf-bg-200 text-sm"
               />
             </div>
             <div>
@@ -400,6 +423,25 @@ function CrawlDemo() {
       resultContent={
         jobId ? (
           <div className="space-y-4">
+            {/* What the server actually submitted, after clamping. */}
+            {appliedOptions && (
+              <div className="rounded-lg border border-cf-border bg-cf-bg-300 px-3 py-2 text-xs text-cf-text-muted">
+                <span className="font-medium text-cf-text">Submitted:</span>{' '}
+                <span className="font-mono">
+                  limit={String(appliedOptions.limit)} depth=
+                  {String(appliedOptions.depth)} render=
+                  {String(appliedOptions.render)} formats=
+                  {JSON.stringify(appliedOptions.formats)}
+                </span>
+                {appliedOptions.render === false && (
+                  <span className="ml-2">
+                    — non-rendered crawls run on Workers, use no browser time,
+                    and are unbilled during the beta.
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Job Status Bar (shown during polling) */}
             {polling && (
               <div className="flex flex-wrap items-center gap-3 pb-3 border-b border-cf-border">

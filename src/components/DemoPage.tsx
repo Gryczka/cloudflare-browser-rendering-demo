@@ -22,7 +22,8 @@ interface DemoPageProps {
   fullWidthResult?: boolean;
   loading?: boolean;
   error?: string | null;
-  browserMs?: string | null;
+  /** Browser time in whole ms, from the X-Browser-Ms-Used response header */
+  browserMs?: number | null;
 }
 
 export default function DemoPage({
@@ -148,9 +149,12 @@ export default function DemoPage({
       )}
 
       {/* Browser Time */}
-      {browserMs && (
+      {browserMs != null && (
         <div className="mb-4 flex items-center gap-2">
-          <StatusBadge status="success" label={`${browserMs}ms browser time`} />
+          <StatusBadge
+            status="success"
+            label={`${browserMs.toLocaleString()}ms browser time`}
+          />
         </div>
       )}
 

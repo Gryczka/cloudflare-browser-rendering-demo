@@ -1,14 +1,46 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "cloudflare-browser-rendering-demo",
-	"compatibility_date": "2025-09-02",
+	/**
+	 * 2026-03-24 or later is required by `env.BROWSER.quickAction()`.
+	 * Kept current so the browser binding can be added without a second bump.
+	 */
+	"compatibility_date": "2026-03-24",
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
 	"main": "@tanstack/react-start/server-entry",
 	"observability": {
 		"enabled": true
-	}
+	},
+	/**
+	 * Rate limiting for a public, unauthenticated demo.
+	 *
+	 * Two namespaces so an expensive crawl cannot consume the budget for
+	 * cheap Quick Actions. `period` only accepts 10 or 60.
+	 *
+	 * Caveat: these counters are per Cloudflare location and are eventually
+	 * consistent, so they bound burst abuse rather than global spend. The hard
+	 * ceilings in src/server/guards.ts are what actually cap cost.
+	 */
+	"ratelimits": [
+		{
+			"name": "QUICK_ACTION_LIMITER",
+			"namespace_id": "1001",
+			"simple": {
+				"limit": 20,
+				"period": 60
+			}
+		},
+		{
+			"name": "CRAWL_LIMITER",
+			"namespace_id": "1002",
+			"simple": {
+				"limit": 3,
+				"period": 60
+			}
+		}
+	]
 	/**
 	 * Environment Variables
 	 *

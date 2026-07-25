@@ -22,7 +22,8 @@ const apiCode = `const resp = await fetch(
     }),
   }
 );
-// Returns: fully rendered HTML as text`;
+const { result } = await resp.json();
+// result: the fully rendered HTML as a string`;
 
 const pills = [
   { label: 'example.com', value: 'https://example.com' },
@@ -34,7 +35,7 @@ function ContentDemo() {
   const [html, setHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'source' | 'preview'>('source');
 
   const handleRun = async (url: string) => {

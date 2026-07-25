@@ -23,7 +23,8 @@ const apiCode = `const resp = await fetch(
     }),
   }
 );
-// Returns: Markdown text`;
+const { result } = await resp.json();
+// result: the page converted to Markdown, as a string`;
 
 const pills = [
   { label: 'example.com', value: 'https://example.com' },
@@ -41,7 +42,7 @@ function MarkdownDemo() {
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
 
   const handleRun = async (url: string) => {

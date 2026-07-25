@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Download, Copy, Check, Clock, HardDrive } from 'lucide-react';
 
 interface ResultToolbarProps {
-  /** Browser time in ms from the API response */
-  browserMs?: string | null;
+  /** Browser time in whole ms, from the X-Browser-Ms-Used response header */
+  browserMs?: number | null;
   /** Size of the result content in bytes */
   contentSize?: number;
   /** Label for the content type */
@@ -48,17 +48,20 @@ export default function ResultToolbar({
   return (
     <div className="flex items-center gap-3 flex-wrap">
       {/* Metrics */}
-      {browserMs && (
+      {browserMs != null && (
         <span className="inline-flex items-center gap-1.5 text-xs text-cf-text-muted">
-          <Clock size={12} className="text-green-500" />
+          <Clock size={12} className="text-cf-success" />
           <span>
-            <strong className="text-cf-text">{browserMs}</strong>ms
+            <strong className="text-cf-text">
+              {browserMs.toLocaleString()}
+            </strong>
+            ms
           </span>
         </span>
       )}
       {contentSize != null && contentSize > 0 && (
         <span className="inline-flex items-center gap-1.5 text-xs text-cf-text-muted">
-          <HardDrive size={12} className="text-blue-500" />
+          <HardDrive size={12} className="text-cf-info" />
           <span>
             <strong className="text-cf-text">{formatSize(contentSize)}</strong>
             {contentLabel ? ` ${contentLabel}` : ''}

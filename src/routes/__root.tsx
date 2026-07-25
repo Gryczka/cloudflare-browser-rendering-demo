@@ -81,11 +81,11 @@ function RootLayout() {
 
             <div className="flex items-center gap-3">
               <a
-                href="https://github.com/cloudflare"
+                href="https://github.com/Gryczka/cloudflare-browser-rendering-demo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 rounded-md border border-cf-border px-2 py-0.5 font-sans text-[11px] font-medium text-cf-text-subtle transition-colors hover:border-cf-orange hover:text-cf-orange"
-                title="View on GitHub"
+                title="View this demo's source on GitHub"
               >
                 <Github className="size-3" />
               </a>

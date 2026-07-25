@@ -40,7 +40,7 @@ function ScreenshotDemo() {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [format, setFormat] = useState<'png' | 'webp' | 'jpeg'>('png');
   const [fullPage, setFullPage] = useState(false);
 

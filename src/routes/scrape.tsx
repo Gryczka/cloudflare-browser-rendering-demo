@@ -6,7 +6,7 @@ import PillButton from '../components/PillButton';
 import SyntaxHighlight from '../components/SyntaxHighlight';
 import UseCases from '../components/UseCases';
 import ResultToolbar from '../components/ResultToolbar';
-import { scrapeContent } from '../server/browser-rendering';
+import { scrapeContent, type ScrapeGroup } from '../server/browser-rendering';
 
 export const Route = createFileRoute('/scrape')({ component: ScrapeDemo });
 
@@ -27,7 +27,8 @@ const apiCode = `const resp = await fetch(
     }),
   }
 );
-// Returns: { results: [{ selector, results: [{ text, html, attributes }] }] }`;
+const { result } = await resp.json();
+// result: [{ selector, results: [{ text, html, attributes, width, height }] }]`;
 
 const presets = [
   {
@@ -50,17 +51,17 @@ const presets = [
 function ScrapeDemo() {
   const [url, setUrl] = useState('');
   const [selectors, setSelectors] = useState('h1, a');
-  const [result, setResult] = useState<any>(null);
+  const [groups, setGroups] = useState<Array<ScrapeGroup> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [resultView, setResultView] = useState<'table' | 'json'>('table');
 
   const handleRun = async () => {
     if (!url.trim()) return;
     setLoading(true);
     setError(null);
-    setResult(null);
+    setGroups(null);
     setBrowserMs(null);
     try {
       const elements = selectors
@@ -69,7 +70,7 @@ function ScrapeDemo() {
         .filter(Boolean)
         .map((selector) => ({ selector }));
       const res = await scrapeContent({ data: { url, elements } });
-      setResult(res.result);
+      setGroups(res.result);
       setBrowserMs(res.browserMs);
     } catch (e: any) {
       setError(e.message || 'Scrape failed');
@@ -77,6 +78,11 @@ function ScrapeDemo() {
       setLoading(false);
     }
   };
+
+  const totalMatches = (groups ?? []).reduce(
+    (sum, group) => sum + (group.results?.length ?? 0),
+    0
+  );
 
   return (
     <DemoPage
@@ -88,46 +94,81 @@ function ScrapeDemo() {
       loading={loading}
       error={error}
       resultContent={
-        result ? (
+        groups ? (
           <div>
             <ResultToolbar
               browserMs={browserMs}
-              contentSize={JSON.stringify(result).length}
+              contentSize={JSON.stringify(groups).length}
               contentLabel="JSON"
-              copyContent={JSON.stringify(result, null, 2)}
-              download={{ data: JSON.stringify(result, null, 2), filename: 'scrape-results.json', mime: 'application/json' }}
+              copyContent={JSON.stringify(groups, null, 2)}
+              download={{ data: JSON.stringify(groups, null, 2), filename: 'scrape-results.json', mime: 'application/json' }}
             />
-            <div className="flex gap-2 my-3">
-              <button onClick={() => setResultView('table')} className={`px-3 py-1 text-sm rounded-lg cursor-pointer transition-colors ${resultView === 'table' ? 'bg-cf-orange text-white' : 'bg-gray-100 text-cf-text'}`}>Table</button>
-              <button onClick={() => setResultView('json')} className={`px-3 py-1 text-sm rounded-lg cursor-pointer transition-colors ${resultView === 'json' ? 'bg-cf-orange text-white' : 'bg-gray-100 text-cf-text'}`}>JSON</button>
+            <div className="flex items-center gap-2 my-3">
+              <button onClick={() => setResultView('table')} className={`cursor-pointer rounded-lg px-3 py-1 text-sm transition-colors ${resultView === 'table' ? 'bg-cf-orange text-cf-on-orange' : 'bg-cf-bg-300 text-cf-text'}`}>Table</button>
+              <button onClick={() => setResultView('json')} className={`cursor-pointer rounded-lg px-3 py-1 text-sm transition-colors ${resultView === 'json' ? 'bg-cf-orange text-cf-on-orange' : 'bg-cf-bg-300 text-cf-text'}`}>JSON</button>
+              <p className="ml-1 text-sm text-cf-text-muted">
+                {totalMatches} match{totalMatches === 1 ? '' : 'es'} across{' '}
+                {groups.length} selector{groups.length === 1 ? '' : 's'}
+              </p>
             </div>
             {resultView === 'table' ? (
-              <div className="overflow-auto max-h-[500px]">
-                {(result.results || result.result?.results || [result]).map((group: any, gi: number) => (
-                  <div key={gi} className="mb-4">
-                    {group.selector && <p className="text-xs font-mono text-cf-orange mb-2">Selector: {group.selector}</p>}
-                    <table className="w-full text-sm border-collapse">
-                      <thead className="sticky top-0 bg-gray-50"><tr className="border-b border-cf-border">
-                        <th className="text-left p-2 text-cf-text-muted font-medium text-xs">#</th>
-                        <th className="text-left p-2 text-cf-text-muted font-medium text-xs">Text</th>
-                        <th className="text-left p-2 text-cf-text-muted font-medium text-xs">Tag</th>
-                      </tr></thead>
-                      <tbody>
-                        {(group.results || []).slice(0, 50).map((item: any, j: number) => (
-                          <tr key={j} className="border-b border-cf-border/50 hover:bg-gray-50">
-                            <td className="p-2 text-cf-text-muted text-xs">{j + 1}</td>
-                            <td className="p-2 text-cf-text text-xs max-w-[400px] truncate">{item.text || '-'}</td>
-                            <td className="p-2 text-xs font-mono text-cf-text-muted">{item.tag || item.attributes?.tag || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
+              <div className="max-h-[500px] overflow-auto">
+                {groups.length === 0 ? (
+                  <p className="rounded-lg border border-cf-border bg-cf-bg-200 p-4 text-sm text-cf-text-muted">
+                    No elements matched those selectors.
+                  </p>
+                ) : (
+                  groups.map((group, gi) => (
+                    <div key={`${group.selector}-${gi}`} className="mb-5">
+                      <p className="mb-2 font-mono text-xs text-cf-orange">
+                        {group.selector}
+                        <span className="ml-2 text-cf-text-subtle">
+                          {group.results?.length ?? 0} match
+                          {(group.results?.length ?? 0) === 1 ? '' : 'es'}
+                        </span>
+                      </p>
+                      {(group.results?.length ?? 0) === 0 ? (
+                        <p className="rounded border border-cf-border bg-cf-bg-200 p-3 text-xs text-cf-text-muted">
+                          No matches for this selector.
+                        </p>
+                      ) : (
+                        <table className="w-full border-collapse text-sm">
+                          <thead className="sticky top-0 bg-cf-bg-200">
+                            <tr className="border-b border-cf-border">
+                              <th className="w-12 p-2 text-left text-xs font-medium text-cf-text-muted">#</th>
+                              <th className="p-2 text-left text-xs font-medium text-cf-text-muted">Text</th>
+                              <th className="w-28 p-2 text-left text-xs font-medium text-cf-text-muted">Size</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.results.slice(0, 50).map((item, j) => (
+                              <tr key={j} className="border-b border-cf-border/50 hover:bg-cf-bg-200">
+                                <td className="p-2 align-top text-xs text-cf-text-muted">{j + 1}</td>
+                                <td className="max-w-[520px] truncate p-2 text-xs text-cf-text">
+                                  {item.text?.trim() || <span className="text-cf-text-subtle">(empty)</span>}
+                                </td>
+                                <td className="p-2 font-mono text-xs text-cf-text-muted">
+                                  {item.width != null && item.height != null
+                                    ? `${Math.round(item.width)}×${Math.round(item.height)}`
+                                    : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      {(group.results?.length ?? 0) > 50 && (
+                        <p className="p-2 text-xs text-cf-text-muted">
+                          Showing first 50 of {group.results.length} matches.
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             ) : (
-              <div className="bg-cf-code-bg rounded-lg p-4 overflow-auto max-h-[500px]">
-                <SyntaxHighlight code={JSON.stringify(result, null, 2)} language="json" className="text-xs" />
+              <div className="dark-surface max-h-[500px] overflow-auto rounded-lg p-4">
+                <SyntaxHighlight code={JSON.stringify(groups, null, 2)} language="json" className="text-xs" />
               </div>
             )}
           </div>

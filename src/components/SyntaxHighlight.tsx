@@ -11,28 +11,33 @@ interface SyntaxHighlightProps {
   className?: string;
 }
 
-// ── Token types and their colors (CF theme) ──────────────────────
+// ── Token types and their colors ─────────────────────────────────
+//
+// These are always rendered on a dark surface (--color-cf-code-bg /
+// .dark-surface), so every value here must be legible against #2a1a0e.
+// Saturated mid-tones read fine; the dim tones use the surface-dark ramp
+// rather than the warm-brown text ramp used elsewhere in the UI.
 const colors = {
-  keyword: '#9616ff',    // cf-ai purple
-  control: '#9616ff',
-  declaration: '#2563eb', // cf-info blue
-  string: '#16a34a',     // cf-success green
-  template: '#16a34a',
-  comment: 'oklch(from #521000 l c h / 56%)', // cf-text-subtle
-  function: '#eab308',   // cf-warning yellow
-  type: '#2563eb',       // cf-info blue
-  property: '#ff4801',   // cf-orange
-  number: '#16a34a',     // cf-success green
-  boolean: '#2563eb',
-  null: '#2563eb',
-  operator: 'oklch(from #521000 l c h / 78%)', // cf-text-muted
-  punctuation: 'oklch(from #521000 l c h / 56%)',
-  tag: '#2563eb',
-  attrName: '#ff4801',
-  attrValue: '#16a34a',
-  entity: '#eab308',
+  keyword: '#c98bff',    // cf-ai purple, lightened for dark bg
+  control: '#c98bff',
+  declaration: '#93c5fd', // surface-dark-info
+  string: '#86efac',     // surface-dark-success
+  template: '#86efac',
+  comment: '#9a8878',    // surface-dark-dim
+  function: '#fcd34d',   // cf-warning yellow, lightened
+  type: '#93c5fd',
+  property: '#ff8a5c',   // cf-orange, lightened for dark bg
+  number: '#86efac',
+  boolean: '#93c5fd',
+  null: '#93c5fd',
+  operator: '#e8d5c4',   // surface-dark-muted
+  punctuation: '#9a8878', // surface-dark-dim
+  tag: '#93c5fd',
+  attrName: '#ff8a5c',
+  attrValue: '#86efac',
+  entity: '#fcd34d',
   text: '#f5ede0',       // surface-dark-text
-  key: '#ff4801',        // cf-orange
+  key: '#ff8a5c',
 } as const;
 
 // ── Highlighter functions ─────────────────────────────────────────

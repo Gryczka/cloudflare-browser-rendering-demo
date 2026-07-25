@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Map, Search, ExternalLink } from 'lucide-react';
 import DemoPage from '../components/DemoPage';
-import SyntaxHighlight from '../components/SyntaxHighlight';
 import UseCases from '../components/UseCases';
 import ResultToolbar from '../components/ResultToolbar';
 import { fetchLinks } from '../server/browser-rendering';
@@ -22,7 +21,8 @@ const apiCode = `const resp = await fetch(
     }),
   }
 );
-// Returns: { links: [{ href, text, ... }] }`;
+const { result } = await resp.json();
+// result: string[] — absolute URLs found on the page`;
 
 const pills = [
   { label: 'example.com', value: 'https://example.com' },
@@ -30,20 +30,24 @@ const pills = [
   { label: 'news.ycombinator.com', value: 'https://news.ycombinator.com' },
 ];
 
+const MAX_ROWS = 200;
+
 function LinksDemo() {
-  const [result, setResult] = useState<any>(null);
+  const [links, setLinks] = useState<Array<string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
+  const [filter, setFilter] = useState('');
 
   const handleRun = async (url: string) => {
     setLoading(true);
     setError(null);
-    setResult(null);
+    setLinks(null);
     setBrowserMs(null);
+    setFilter('');
     try {
       const res = await fetchLinks({ data: { url } });
-      setResult(res.result);
+      setLinks(res.result);
       setBrowserMs(res.browserMs);
     } catch (e: any) {
       setError(e.message || 'Links fetch failed');
@@ -52,7 +56,10 @@ function LinksDemo() {
     }
   };
 
-  const links = result?.links || result?.result?.links || [];
+  const needle = filter.trim().toLowerCase();
+  const visible = (links ?? []).filter((link) =>
+    needle ? link.toLowerCase().includes(needle) : true
+  );
 
   return (
     <DemoPage
@@ -66,71 +73,83 @@ function LinksDemo() {
       loading={loading}
       error={error}
       resultContent={
-        result ? (
+        links ? (
           <div>
-            {Array.isArray(links) && links.length > 0 ? (
-              <div>
-                <div className="flex items-center gap-4 mb-3">
-                  <ResultToolbar
-                    browserMs={browserMs}
-                    contentSize={JSON.stringify(result).length}
-                    contentLabel="JSON"
-                    copyContent={JSON.stringify(links, null, 2)}
-                    download={{ data: links.map((l: any) => `${l.text || ''}\t${l.href || ''}`).join('\n'), filename: 'links.tsv', mime: 'text/tab-separated-values' }}
-                  />
-                </div>
-                <p className="text-sm text-cf-text-muted mb-3">
-                  {links.length} links found
-                </p>
-                <div className="max-h-[500px] overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-gray-50">
-                      <tr className="border-b border-cf-border">
-                        <th className="text-left p-2 text-cf-text-muted font-medium">
-                          #
-                        </th>
-                        <th className="text-left p-2 text-cf-text-muted font-medium">
-                          Text
-                        </th>
-                        <th className="text-left p-2 text-cf-text-muted font-medium">
-                          URL
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {links.slice(0, 100).map((link: any, i: number) => (
-                        <tr
-                          key={i}
-                          className="border-b border-cf-border/50 hover:bg-gray-50"
-                        >
-                          <td className="p-2 text-cf-text-muted">{i + 1}</td>
-                          <td className="p-2 text-cf-text max-w-[200px] truncate">
-                            {link.text || '-'}
-                          </td>
-                          <td className="p-2">
-                            <a
-                              href={link.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-cf-orange hover:underline font-mono text-xs max-w-[400px] truncate block"
-                            >
-                              {link.href}
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {links.length > 100 && (
-                    <p className="text-xs text-cf-text-muted p-2">
-                      Showing first 100 of {links.length} links
-                    </p>
-                  )}
-                </div>
-              </div>
+            <ResultToolbar
+              browserMs={browserMs}
+              contentSize={links.join('\n').length}
+              contentLabel="links"
+              copyContent={links.join('\n')}
+              download={{
+                data: links.join('\n'),
+                filename: 'links.txt',
+                mime: 'text/plain',
+              }}
+            />
+
+            <div className="flex items-center gap-3 my-3">
+              <input
+                type="search"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter links..."
+                className="input-field flex-1 py-2 text-sm"
+              />
+              <p className="shrink-0 text-sm text-cf-text-muted">
+                {needle
+                  ? `${visible.length} of ${links.length}`
+                  : `${links.length} links`}
+              </p>
+            </div>
+
+            {visible.length === 0 ? (
+              <p className="rounded-lg border border-cf-border bg-cf-bg-200 p-4 text-sm text-cf-text-muted">
+                {links.length === 0
+                  ? 'No links found on this page.'
+                  : 'No links match that filter.'}
+              </p>
             ) : (
-              <div className="bg-cf-code-bg rounded-lg p-4 overflow-auto max-h-[500px]">
-                <SyntaxHighlight code={JSON.stringify(result, null, 2)} language="json" className="text-xs" />
+              <div className="max-h-[500px] overflow-auto rounded-lg border border-cf-border">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-cf-bg-200">
+                    <tr className="border-b border-cf-border">
+                      <th className="w-12 p-2 text-left font-medium text-cf-text-muted">
+                        #
+                      </th>
+                      <th className="p-2 text-left font-medium text-cf-text-muted">
+                        URL
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.slice(0, MAX_ROWS).map((link, i) => (
+                      <tr
+                        key={`${link}-${i}`}
+                        className="border-b border-cf-border/50 hover:bg-cf-bg-200"
+                      >
+                        <td className="p-2 align-top text-cf-text-muted">
+                          {i + 1}
+                        </td>
+                        <td className="p-2">
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block break-all font-mono text-xs text-cf-orange hover:underline"
+                          >
+                            {link}
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {visible.length > MAX_ROWS && (
+                  <p className="p-2 text-xs text-cf-text-muted">
+                    Showing first {MAX_ROWS} of {visible.length} matching links.
+                    Use Download for the full list.
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -37,7 +37,7 @@ function PdfDemo() {
   const [pdf, setPdf] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
   const [pageFormat, setPageFormat] = useState('A4');
   const [landscape, setLandscape] = useState(false);
 

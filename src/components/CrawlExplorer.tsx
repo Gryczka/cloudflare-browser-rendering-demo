@@ -44,9 +44,9 @@ export default function CrawlExplorer({
   records,
   jobId,
   hasJson = false,
-  onShowSkipped: _onShowSkipped,
-  skippedRecords: _skippedRecords,
-  showSkipped: _showSkipped,
+  onShowSkipped,
+  skippedRecords,
+  showSkipped = false,
 }: CrawlExplorerProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [viewTab, setViewTab] = useState<ViewTab>('markdown');
@@ -59,12 +59,25 @@ export default function CrawlExplorer({
     () => records.filter((r) => r.status === 'completed' || r.status === 'complete'),
     [records]
   );
+
+  /**
+   * The main `records` payload only contains skipped entries when the crawl
+   * happened to return them inline. `?status=skipped` fetches them explicitly,
+   * so prefer that list once it has been loaded.
+   */
+  const skippedFromApi = skippedRecords ?? [];
+  const inlineSkipped = useMemo(
+    () => records.filter((r) => r.status === 'skipped'),
+    [records]
+  );
+  const effectiveSkipped =
+    showSkipped && skippedFromApi.length > 0 ? skippedFromApi : inlineSkipped;
+
   const allRecords = useMemo(() => {
     if (filterStatus === 'completed') return completedRecords;
-    if (filterStatus === 'skipped')
-      return records.filter((r) => r.status === 'skipped');
+    if (filterStatus === 'skipped') return effectiveSkipped;
     return records;
-  }, [records, completedRecords, filterStatus]);
+  }, [records, completedRecords, effectiveSkipped, filterStatus]);
 
   // Filter by search
   const filteredRecords = useMemo(() => {
@@ -216,6 +229,9 @@ export default function CrawlExplorer({
               onClick={() => {
                 setFilterStatus(f);
                 setSelectedIndex(null);
+                // Skipped records are not returned inline by default; fetch
+                // them from ?status=skipped the first time the tab is opened.
+                if (f === 'skipped' && !showSkipped) onShowSkipped?.();
               }}
               className={`px-3 py-1 text-xs rounded-md cursor-pointer transition-colors ${
                 filterStatus === f
@@ -227,7 +243,7 @@ export default function CrawlExplorer({
                 ? `All (${records.length})`
                 : f === 'completed'
                   ? `Crawled (${completedRecords.length})`
-                  : `Skipped (${(jobMeta.skipped ?? 0)})`}
+                  : `Skipped (${jobMeta.skipped ?? effectiveSkipped.length})`}
             </button>
           ))}
         </div>

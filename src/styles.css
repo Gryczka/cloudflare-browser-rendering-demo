@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 @theme {
+  /* Clears Tailwind's default palette so only the CF tokens below are
+     available. Anything Tailwind ships by default (bg-white, bg-gray-100,
+     text-green-500, ...) compiles to nothing unless it is redefined here —
+     see the compatibility aliases at the end of this block. */
   --color-*: initial;
   --color-black: #000;
+  --color-white: #fff;
 
   --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
@@ -11,6 +16,8 @@
   --color-cf-orange: #ff4801;
   --color-cf-orange-hover: #ff7038;
   --color-cf-orange-light: oklch(from #ff4801 l c h / 8%);
+  /* Foreground for content sitting on top of cf-orange. */
+  --color-cf-on-orange: #fff;
 
   --color-cf-text: #521000;
   --color-cf-text-muted: oklch(from #521000 l c h / 78%);
@@ -35,10 +42,15 @@
   --color-surface-dark-border: #3d2a18;
   --color-surface-dark-text: #f5ede0;
   --color-surface-dark-muted: #e8d5c4;
-  --color-surface-dark-dim: #7a6a58;
+  --color-surface-dark-dim: #9a8878;
   --color-surface-dark-error: #fca5a5;
   --color-surface-dark-info: #93c5fd;
   --color-surface-dark-success: #86efac;
+
+  /* Background for code/output panels. SyntaxHighlight emits light-on-dark
+     token colors, so this must stay a dark surface or the output is
+     illegible. */
+  --color-cf-code-bg: var(--color-surface-dark);
 
   /* Radii */
   --radius-sm: 4px;
@@ -95,6 +107,33 @@
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
   }
+
+  /* ── Compatibility aliases ──────────────────────────────────────────
+     `--color-*: initial` at the top of this block removes Tailwind's default
+     palette, but the markup still references a handful of default class names
+     and a few token names that were never defined. Without these entries
+     those classes emit no CSS at all and silently render as nothing.
+
+     Each alias points at the nearest CF token rather than the original
+     Tailwind colour, so the result stays on-palette.
+
+     Verify with `npm run check:css` after changing anything here. */
+
+  /* Neutral ramp → warm CF surfaces */
+  --color-gray-50: var(--color-cf-bg-200);
+  --color-gray-100: var(--color-cf-bg-300);
+  --color-gray-200: var(--color-cf-border-light);
+  --color-gray-300: var(--color-surface-dark-muted);
+
+  /* Status colours referenced without the cf- prefix */
+  --color-green-400: var(--color-cf-success);
+  --color-green-500: var(--color-cf-success);
+  --color-green-600: var(--color-cf-success);
+  --color-blue-500: var(--color-cf-info);
+
+  /* Misspelled/undefined token names still present in the markup */
+  --color-cf-orange-dark: var(--color-cf-orange-hover);
+  --color-cf-text-secondary: var(--color-cf-text-muted);
 }
 
 /* sugar-high style syntax highlighting tokens → CF theme colors */
@@ -166,6 +205,21 @@
 @utility dot-pattern {
   background-image: radial-gradient(circle, var(--color-cf-border) 0.75px, transparent 0.75px);
   background-size: 12px 12px;
+}
+
+/* ── Pulsing activity dots ──
+   Used for the three-dot "working" indicator. The @keyframes pulse-dot lives
+   in the @theme block; these utilities are what actually apply it. */
+@utility pulse-dot {
+  animation: pulse-dot 1.4s var(--ease-out) infinite;
+}
+
+@utility pulse-dot-delay-1 {
+  animation-delay: 0.2s;
+}
+
+@utility pulse-dot-delay-2 {
+  animation-delay: 0.4s;
 }
 
 /* ── Button utilities ── */

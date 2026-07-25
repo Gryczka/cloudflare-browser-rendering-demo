@@ -61,7 +61,7 @@ function JsonDemo() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [browserMs, setBrowserMs] = useState<string | null>(null);
+  const [browserMs, setBrowserMs] = useState<number | null>(null);
 
   const handleRun = async () => {
     if (!url.trim() || !prompt.trim()) return;

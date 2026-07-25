@@ -105,8 +105,13 @@ describe('DemoPage', () => {
   });
 
   it('displays browser time when browserMs prop is set', () => {
-    render(<DemoPage {...defaultProps} browserMs="450" />);
+    render(<DemoPage {...defaultProps} browserMs={450} />);
     expect(screen.getByText('450ms browser time')).toBeInTheDocument();
+  });
+
+  it('displays browser time of zero rather than hiding it', () => {
+    render(<DemoPage {...defaultProps} browserMs={0} />);
+    expect(screen.getByText('0ms browser time')).toBeInTheDocument();
   });
 
   it('displays result content when provided', () => {

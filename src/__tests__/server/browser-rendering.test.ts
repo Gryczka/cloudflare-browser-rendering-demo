@@ -1,421 +1,590 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// We test the server function handler logic by mocking createServerFn
-// to capture and expose the handler functions for direct invocation.
-
-type HandlerFn = (ctx: { data: any }) => Promise<any>;
-const capturedHandlers: HandlerFn[] = [];
-
+/**
+ * `createServerFn(...).inputValidator(...).handler(fn)` is mocked to return `fn`
+ * itself, so each module export *is* its handler and can be invoked directly as
+ * `api.fetchContent({ data })`.
+ *
+ * This is deliberately keyed by export name. A previous version captured
+ * handlers positionally into an array (`capturedHandlers[0..9]`), which meant
+ * reordering the exports silently remapped every assertion onto the wrong
+ * endpoint.
+ */
 vi.mock('@tanstack/react-start', () => ({
   createServerFn: (_opts?: any) => ({
     inputValidator: (_validatorFn: any) => ({
-      handler: (fn: HandlerFn) => {
-        capturedHandlers.push(fn);
-        return fn;
-      },
+      handler: (fn: any) => fn,
     }),
   }),
 }));
 
-// Stub process.env for the module
-vi.stubGlobal('process', {
-  env: {
-    CF_ACCOUNT_ID: 'test-account-id',
-    CF_API_TOKEN: 'test-api-token',
-  },
-});
+// The rate limiter reads the client IP from the request context, which only
+// exists inside a real request.
+vi.mock('@tanstack/react-start/server', () => ({
+  getRequestHeader: () => '203.0.113.10',
+}));
 
-// Import after mocks are set up - this triggers all createServerFn calls
-// The handlers are captured in order of declaration in the source file:
-// 0: takeScreenshot, 1: generatePdf, 2: fetchContent, 3: fetchMarkdown,
-// 4: scrapeContent, 5: extractJson, 6: fetchLinks, 7: takeSnapshot,
-// 8: startCrawl, 9: getCrawlStatus
-await import('../../server/browser-rendering');
+// `cloudflare:workers` is aliased to a stub in vitest.config.ts.
+import {
+  env,
+  rateLimiters,
+  resetWorkersEnv,
+} from '../mocks/cloudflare-workers';
 
-const handlerMap: Record<string, HandlerFn> = {
-  takeScreenshot: capturedHandlers[0],
-  generatePdf: capturedHandlers[1],
-  fetchContent: capturedHandlers[2],
-  fetchMarkdown: capturedHandlers[3],
-  scrapeContent: capturedHandlers[4],
-  extractJson: capturedHandlers[5],
-  fetchLinks: capturedHandlers[6],
-  takeSnapshot: capturedHandlers[7],
-  startCrawl: capturedHandlers[8],
-  getCrawlStatus: capturedHandlers[9],
-};
+const api = await import('../../server/browser-rendering');
 
-function call(name: string, data: any) {
-  return handlerMap[name]({ data });
+const BASE =
+  'https://api.cloudflare.com/client/v4/accounts/test-account-id/browser-rendering';
+
+/** Build a mock Response for a JSON Quick Action, wrapped in the API envelope. */
+function jsonResponse(
+  result: unknown,
+  { browserMs, meta }: { browserMs?: string; meta?: unknown } = {}
+) {
+  const headers = new Map<string, string>();
+  if (browserMs) headers.set('x-browser-ms-used', browserMs);
+  return {
+    ok: true,
+    status: 200,
+    headers,
+    json: () => Promise.resolve({ success: true, result, meta }),
+  };
 }
 
-describe('Browser Rendering Server Functions', () => {
+function binaryResponse(bytes: Uint8Array, contentType = 'image/png') {
+  const headers = new Map<string, string>([['content-type', contentType]]);
+  return {
+    ok: true,
+    status: 200,
+    headers,
+    arrayBuffer: () => Promise.resolve(bytes.buffer),
+  };
+}
+
+function bodyOf(call: any) {
+  return JSON.parse(call[1].body);
+}
+
+describe('Browser Run server functions', () => {
   const mockFetch = vi.fn();
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
-    globalThis.fetch = mockFetch;
+    globalThis.fetch = mockFetch as any;
     mockFetch.mockReset();
+    resetWorkersEnv();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
   });
 
-  it('captures all 10 handlers', () => {
-    expect(capturedHandlers).toHaveLength(10);
-    Object.values(handlerMap).forEach((h) => expect(h).toBeTypeOf('function'));
-  });
+  // ─── Envelope unwrapping ──────────────────────────────────────────
+  //
+  // Every JSON Quick Action responds with `{ success, result, meta }`. Handing
+  // that envelope to the UI verbatim was the original bug: /markdown rendered a
+  // JSON blob with literal \n, and /snapshot rendered nothing at all.
 
-  // ─── takeScreenshot ──────────────────────────────────────────────
+  describe('envelope unwrapping', () => {
+    it('fetchContent returns the HTML string, not the envelope', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse('<html><body>Hello</body></html>', { browserMs: '800' })
+      );
 
-  describe('takeScreenshot', () => {
-    it('calls the screenshot endpoint with correct URL and returns base64 image', async () => {
-      const mockBuf = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(mockBuf),
-        headers: new Map([
-          ['content-type', 'image/png'],
-          ['x-browser-ms-used', '1500'],
-        ]),
-      });
+      const result = await api.fetchContent({
+        data: { url: 'https://example.com' },
+      } as any);
 
-      const result = await call('takeScreenshot', { url: 'https://example.com' });
+      expect(result.html).toBe('<html><body>Hello</body></html>');
+      expect(result.html).not.toContain('"success"');
+      expect(result.browserMs).toBe(800);
+    });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.cloudflare.com/client/v4/accounts/test-account-id/browser-rendering/screenshot',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ url: 'https://example.com' }),
+    it('fetchMarkdown returns the markdown string, not the envelope', async () => {
+      const markdown = '# Example Domain\n\nThis domain is for use in docs.';
+      mockFetch.mockResolvedValueOnce(jsonResponse(markdown));
+
+      const result = await api.fetchMarkdown({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.markdown).toBe(markdown);
+      expect(result.markdown).not.toContain('"success"');
+      // Real newlines, not the escaped \n that showed up in the raw envelope.
+      expect(result.markdown).toContain('\n');
+    });
+
+    it('fetchLinks returns a flat array of URL strings', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(['https://a.example/', 'https://b.example/x'])
+      );
+
+      const result = await api.fetchLinks({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.result).toEqual([
+        'https://a.example/',
+        'https://b.example/x',
+      ]);
+    });
+
+    it('takeSnapshot surfaces both screenshot and html', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          screenshot: 'iVBORw0KGgo=',
+          content: '<html><body>Snap</body></html>',
         })
       );
-      expect(result.image).toMatch(/^data:image\/png;base64,/);
+
+      const result = await api.takeSnapshot({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.screenshot).toBe('data:image/png;base64,iVBORw0KGgo=');
+      expect(result.html).toBe('<html><body>Snap</body></html>');
     });
 
-    it('forwards screenshotOptions and viewport', async () => {
+    it('takeSnapshot returns nulls when the payload omits fields', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({}));
+
+      const result = await api.takeSnapshot({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.screenshot).toBeNull();
+      expect(result.html).toBeNull();
+    });
+
+    it('scrapeContent returns the selector groups array', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse([
+          { selector: 'h1', results: [{ text: 'Example Domain' }] },
+        ])
+      );
+
+      const result = await api.scrapeContent({
+        data: { url: 'https://example.com', elements: [{ selector: 'h1' }] },
+      } as any);
+
+      expect(result.result).toHaveLength(1);
+      expect(result.result[0].selector).toBe('h1');
+      expect(result.result[0].results[0].text).toBe('Example Domain');
+    });
+
+    it('startCrawl returns the job id string', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-abc-123'));
+
+      const result = await api.startCrawl({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.jobId).toBe('job-abc-123');
+    });
+
+    it('throws when the API reports success: false', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)),
-        headers: new Map([['content-type', 'image/webp']]),
+        status: 200,
+        headers: new Map(),
+        json: () =>
+          Promise.resolve({
+            success: false,
+            result: null,
+            errors: [{ message: 'Navigation timed out' }],
+          }),
       });
 
-      await call('takeScreenshot', {
-        url: 'https://example.com',
-        screenshotOptions: { type: 'webp', fullPage: true },
-        viewport: { width: 1920, height: 1080 },
-      });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.screenshotOptions).toEqual({ type: 'webp', fullPage: true });
-      expect(body.viewport).toEqual({ width: 1920, height: 1080 });
-    });
-
-    it('throws on API error', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        text: () => Promise.resolve('Forbidden'),
-      });
-
-      await expect(call('takeScreenshot', { url: 'https://x.com' })).rejects.toThrow(
-        'Screenshot failed (403): Forbidden'
-      );
+      await expect(
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any)
+      ).rejects.toThrow('Markdown fetch failed: Navigation timed out');
     });
   });
 
-  // ─── generatePdf ────────────────────────────────────────────────
+  // ─── Binary endpoints ─────────────────────────────────────────────
 
-  describe('generatePdf', () => {
-    it('returns base64 PDF data', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: new Map([['x-browser-ms-used', '2000']]),
-      });
+  describe('binary endpoints', () => {
+    it('takeScreenshot returns a data URL and byte count', async () => {
+      mockFetch.mockResolvedValueOnce(
+        binaryResponse(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+      );
 
-      const result = await call('generatePdf', {
-        url: 'https://example.com',
-        pdfOptions: { format: 'A4' },
-      });
+      const result = await api.takeScreenshot({
+        data: { url: 'https://example.com' },
+      } as any);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/pdf'),
+        `${BASE}/screenshot`,
         expect.objectContaining({ method: 'POST' })
       );
+      expect(result.image).toMatch(/^data:image\/png;base64,/);
+      expect(result.bytes).toBe(4);
+    });
+
+    it('encodes payloads larger than one chunk without corruption', async () => {
+      // 20,000 bytes exercises the 8 KB chunked encoder. The naive
+      // per-byte reduce this replaced fell over on inputs this size.
+      const size = 20_000;
+      const bytes = new Uint8Array(size);
+      for (let i = 0; i < size; i++) bytes[i] = i % 256;
+
+      mockFetch.mockResolvedValueOnce(binaryResponse(bytes));
+
+      const result = await api.takeScreenshot({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      const base64 = result.image.split(',')[1];
+      const decoded = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+
+      expect(decoded).toHaveLength(size);
+      expect(Array.from(decoded.slice(0, 4))).toEqual([0, 1, 2, 3]);
+      expect(decoded[size - 1]).toBe((size - 1) % 256);
+    });
+
+    it('generatePdf forwards pdfOptions', async () => {
+      mockFetch.mockResolvedValueOnce(
+        binaryResponse(new Uint8Array(8), 'application/pdf')
+      );
+
+      const result = await api.generatePdf({
+        data: { url: 'https://example.com', pdfOptions: { format: 'A4' } },
+      } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).pdfOptions).toEqual({
+        format: 'A4',
+      });
       expect(result.pdf).toMatch(/^data:application\/pdf;base64,/);
     });
+
+    it('prefers html over url when both are supplied', async () => {
+      mockFetch.mockResolvedValueOnce(
+        binaryResponse(new Uint8Array(4), 'application/pdf')
+      );
+
+      await api.generatePdf({
+        data: { html: '<h1>Invoice</h1>', url: 'https://example.com' },
+      } as any);
+
+      const body = bodyOf(mockFetch.mock.calls[0]);
+      expect(body.html).toBe('<h1>Invoice</h1>');
+      expect(body.url).toBeUndefined();
+    });
   });
 
-  // ─── fetchContent ───────────────────────────────────────────────
+  // ─── browserMs ────────────────────────────────────────────────────
 
-  describe('fetchContent', () => {
-    it('returns rendered HTML string', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve('<html><body>Hello</body></html>'),
-        headers: new Map([['x-browser-ms-used', '800']]),
-      });
+  describe('browserMs', () => {
+    it('rounds the float from the header to whole milliseconds', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse('ok', { browserMs: '386.769775390625' })
+      );
 
-      const result = await call('fetchContent', { url: 'https://example.com' });
-      expect(result.html).toBe('<html><body>Hello</body></html>');
+      const result = await api.fetchMarkdown({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.browserMs).toBe(387);
     });
 
-    it('throws on error', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      });
+    it('is null when the header is absent', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('ok'));
 
-      await expect(call('fetchContent', { url: 'https://x.com' })).rejects.toThrow(
-        'Content fetch failed (500)'
+      const result = await api.fetchMarkdown({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.browserMs).toBeNull();
+    });
+
+    it('is null when the header is not a number', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse('ok', { browserMs: 'not-a-number' })
+      );
+
+      const result = await api.fetchMarkdown({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      expect(result.browserMs).toBeNull();
+    });
+  });
+
+  // ─── URL validation ───────────────────────────────────────────────
+
+  describe('URL validation', () => {
+    const rejected: Array<[string, string]> = [
+      ['no scheme', 'example.com'],
+      ['file scheme', 'file:///etc/passwd'],
+      ['javascript scheme', 'javascript:alert(1)'],
+      ['loopback name', 'http://localhost:8080/'],
+      ['loopback v4', 'http://127.0.0.1/'],
+      ['private 10/8', 'http://10.0.0.5/'],
+      ['private 192.168/16', 'http://192.168.1.1/'],
+      ['private 172.16/12', 'http://172.20.10.1/'],
+      ['cloud metadata', 'http://169.254.169.254/latest/meta-data/'],
+      ['internal tld', 'http://db.internal/'],
+      ['mdns tld', 'http://printer.local/'],
+      ['loopback v6', 'http://[::1]/'],
+    ];
+
+    for (const [label, url] of rejected) {
+      it(`rejects ${label} without calling the API`, async () => {
+        await expect(
+          api.fetchContent({ data: { url } } as any)
+        ).rejects.toThrow();
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+    }
+
+    it('accepts a normal public https URL', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('<html></html>'));
+
+      await api.fetchContent({
+        data: { url: 'https://example.com/page?q=1' },
+      } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).url).toBe(
+        'https://example.com/page?q=1'
       );
     });
-  });
 
-  // ─── fetchMarkdown ──────────────────────────────────────────────
+    it('rejects an empty selector list', async () => {
+      await expect(
+        api.scrapeContent({
+          data: { url: 'https://example.com', elements: [] },
+        } as any)
+      ).rejects.toThrow('At least one CSS selector is required.');
+    });
 
-  describe('fetchMarkdown', () => {
-    it('returns markdown text', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve('# Hello\n\nWorld'),
-        headers: new Map(),
-      });
-
-      const result = await call('fetchMarkdown', { url: 'https://example.com' });
-      expect(result.markdown).toBe('# Hello\n\nWorld');
+    it('requires a prompt or a schema for JSON extraction', async () => {
+      await expect(
+        api.extractJson({ data: { url: 'https://example.com' } } as any)
+      ).rejects.toThrow('needs either a prompt or a response_format schema');
     });
   });
 
-  // ─── scrapeContent ──────────────────────────────────────────────
+  // ─── Crawl clamping ───────────────────────────────────────────────
 
-  describe('scrapeContent', () => {
-    it('sends selectors and returns structured result', async () => {
-      const mockResult = { results: [{ selector: 'h1', results: [{ text: 'Title' }] }] };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-        headers: new Map(),
-      });
+  describe('crawl option clamping', () => {
+    it('clamps an absurd limit and depth to the demo ceilings', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
 
-      const result = await call('scrapeContent', {
-        url: 'https://example.com',
-        elements: [{ selector: 'h1' }],
-      });
+      await api.startCrawl({
+        data: { url: 'https://example.com', limit: 100_000, depth: 100_000 },
+      } as any);
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.elements).toEqual([{ selector: 'h1' }]);
-      expect(result.result).toEqual(mockResult);
+      const body = bodyOf(mockFetch.mock.calls[0]);
+      expect(body.limit).toBe(100);
+      expect(body.depth).toBe(5);
+    });
+
+    it('defaults render to false so no browser time is consumed', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
+
+      await api.startCrawl({ data: { url: 'https://example.com' } } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).render).toBe(false);
+    });
+
+    it('omits ai-train from crawlPurposes', async () => {
+      // The API default includes ai-train, and any site whose Content Signals
+      // set ai-train=no rejects the whole job with a 400.
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
+
+      await api.startCrawl({ data: { url: 'https://example.com' } } as any);
+
+      const purposes = bodyOf(mockFetch.mock.calls[0]).crawlPurposes;
+      expect(purposes).toEqual(['search', 'ai-input']);
+      expect(purposes).not.toContain('ai-train');
+    });
+
+    it('drops unrecognised formats and falls back to markdown', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
+
+      await api.startCrawl({
+        data: { url: 'https://example.com', formats: ['exe', 'wat'] },
+      } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).formats).toEqual(['markdown']);
+    });
+
+    it('keeps valid formats', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
+
+      await api.startCrawl({
+        data: { url: 'https://example.com', formats: ['markdown', 'html'] },
+      } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).formats).toEqual([
+        'markdown',
+        'html',
+      ]);
+    });
+
+    it('reports the clamped options back to the caller', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
+
+      const result = await api.startCrawl({
+        data: { url: 'https://example.com', limit: 9999 },
+      } as any);
+
+      expect(result.appliedOptions.limit).toBe(100);
     });
   });
 
-  // ─── extractJson ────────────────────────────────────────────────
-
-  describe('extractJson', () => {
-    it('sends prompt and returns AI-extracted JSON', async () => {
-      const mockResult = { heading: 'Example', links: [] };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-        headers: new Map(),
-      });
-
-      const result = await call('extractJson', {
-        url: 'https://example.com',
-        prompt: 'Extract heading',
-      });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.prompt).toBe('Extract heading');
-      expect(result.result).toEqual(mockResult);
-    });
-
-    it('sends response_format when provided', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({}),
-        headers: new Map(),
-      });
-
-      await call('extractJson', {
-        url: 'https://example.com',
-        response_format: {
-          type: 'json_schema',
-          schema: { type: 'object', properties: { title: { type: 'string' } } },
-        },
-      });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.response_format.type).toBe('json_schema');
-    });
-  });
-
-  // ─── fetchLinks ─────────────────────────────────────────────────
-
-  describe('fetchLinks', () => {
-    it('returns links from page', async () => {
-      const mockResult = { links: [{ href: '/page', text: 'Page' }] };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-        headers: new Map(),
-      });
-
-      const result = await call('fetchLinks', { url: 'https://example.com' });
-      expect(result.result.links).toHaveLength(1);
-    });
-  });
-
-  // ─── takeSnapshot ──────────────────────────────────────────────
-
-  describe('takeSnapshot', () => {
-    it('returns both screenshot and HTML', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ screenshot: 'aGVsbG8=', content: '<html/>' }),
-        headers: new Map(),
-      });
-
-      const result = await call('takeSnapshot', { url: 'https://example.com' });
-      expect(result.screenshot).toMatch(/^data:image\/png;base64,/);
-      expect(result.html).toBe('<html/>');
-    });
-
-    it('returns null screenshot when not present', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ content: '<html/>' }),
-        headers: new Map(),
-      });
-
-      const result = await call('takeSnapshot', { url: 'https://example.com' });
-      expect(result.screenshot).toBeNull();
-    });
-  });
-
-  // ─── startCrawl ─────────────────────────────────────────────────
-
-  describe('startCrawl', () => {
-    it('sends full crawl configuration', async () => {
-      // The real crawl API returns { success: true, result: "job-id-string" }
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, result: 'job-123' }),
-        headers: new Map(),
-      });
-
-      const result = await call('startCrawl', {
-        url: 'https://example.com',
-        limit: 50,
-        depth: 3,
-        formats: ['markdown'],
-        render: false,
-        source: 'sitemaps',
-        options: { includePatterns: ['**/docs/*'] },
-      });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.url).toBe('https://example.com');
-      expect(body.limit).toBe(50);
-      expect(body.depth).toBe(3);
-      expect(body.formats).toEqual(['markdown']);
-      expect(body.render).toBe(false);
-      expect(body.source).toBe('sitemaps');
-      expect(body.options.includePatterns).toEqual(['**/docs/*']);
-      expect(result.result.result).toBe('job-123');
-    });
-
-    it('sends only url when no optional params', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, result: 'job-456' }),
-        headers: new Map(),
-      });
-
-      await call('startCrawl', { url: 'https://example.com' });
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body).toEqual({ url: 'https://example.com' });
-    });
-  });
-
-  // ─── getCrawlStatus ─────────────────────────────────────────────
+  // ─── Crawl status ─────────────────────────────────────────────────
 
   describe('getCrawlStatus', () => {
-    it('GETs crawl job status', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({ result: { status: 'complete', records: [] } }),
-        headers: new Map(),
-      });
-
-      await call('getCrawlStatus', { jobId: 'job-123' });
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/crawl/job-123'),
-        expect.objectContaining({ method: 'GET' })
+    it('unwraps the job and encodes the job id', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          id: 'job-1',
+          status: 'completed',
+          total: 2,
+          finished: 2,
+          skipped: 0,
+          browserSecondsUsed: 1.5,
+          records: [
+            {
+              url: 'https://example.com/',
+              status: 'completed',
+              markdown: '# Hi',
+              metadata: { url: 'https://example.com/', status: 200 },
+            },
+          ],
+        })
       );
+
+      const result = await api.getCrawlStatus({
+        data: { jobId: 'job-1' },
+      } as any);
+
+      expect(result.job.status).toBe('completed');
+      expect(result.job.records).toHaveLength(1);
+      expect(String(mockFetch.mock.calls[0][0])).toBe(`${BASE}/crawl/job-1`);
     });
 
-    it('appends ?status=skipped when filter provided', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ result: { records: [] } }),
-        headers: new Map(),
-      });
-
-      await call('getCrawlStatus', { jobId: 'job-123', status: 'skipped' });
-
-      expect(mockFetch.mock.calls[0][0]).toContain('?status=skipped');
+    it('rejects a malformed job id without calling the API', async () => {
+      await expect(
+        api.getCrawlStatus({ data: { jobId: '../../admin' } } as any)
+      ).rejects.toThrow('Invalid crawl job id.');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('throws on failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: () => Promise.resolve('Not found'),
-      });
+    it('passes through a known record status filter', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ records: [] }));
 
-      await expect(call('getCrawlStatus', { jobId: 'bad' })).rejects.toThrow(
-        'Crawl status check failed (404): Not found'
-      );
+      await api.getCrawlStatus({
+        data: { jobId: 'job-1', status: 'skipped' },
+      } as any);
+
+      expect(String(mockFetch.mock.calls[0][0])).toContain('status=skipped');
+    });
+
+    it('ignores an unknown status filter', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ records: [] }));
+
+      await api.getCrawlStatus({
+        data: { jobId: 'job-1', status: 'bogus' },
+      } as any);
+
+      expect(String(mockFetch.mock.calls[0][0])).not.toContain('status=');
     });
   });
 
-  // ─── Cross-cutting concerns ─────────────────────────────────────
+  // ─── Rate limiting ────────────────────────────────────────────────
 
-  describe('API URL and headers', () => {
-    it('constructs correct base URL with account ID', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(''),
-        headers: new Map(),
-      });
+  describe('rate limiting', () => {
+    it('charges the quick action limiter, keyed on client IP', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('ok'));
 
-      await call('fetchContent', { url: 'https://example.com' });
+      await api.fetchMarkdown({ data: { url: 'https://example.com' } } as any);
 
-      expect(mockFetch.mock.calls[0][0]).toBe(
-        'https://api.cloudflare.com/client/v4/accounts/test-account-id/browser-rendering/content'
-      );
+      expect(rateLimiters.quickAction.calls).toEqual([
+        { key: 'quickAction:203.0.113.10' },
+      ]);
     });
 
-    it('includes Bearer token in Authorization header', async () => {
+    it('charges the separate crawl limiter', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse('job-1'));
+
+      await api.startCrawl({ data: { url: 'https://example.com' } } as any);
+
+      expect(rateLimiters.crawl.calls).toEqual([
+        { key: 'crawl:203.0.113.10' },
+      ]);
+      expect(rateLimiters.quickAction.calls).toHaveLength(0);
+    });
+
+    it('blocks the request when over the limit', async () => {
+      rateLimiters.quickAction.allow = false;
+
+      await expect(
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any)
+      ).rejects.toThrow('Rate limit reached');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('uses a distinct message for the crawl limiter', async () => {
+      rateLimiters.crawl.allow = false;
+
+      await expect(
+        api.startCrawl({ data: { url: 'https://example.com' } } as any)
+      ).rejects.toThrow('Crawl rate limit reached');
+    });
+  });
+
+  // ─── Error handling ───────────────────────────────────────────────
+
+  describe('error handling', () => {
+    it('extracts the structured error message', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(''),
+        ok: false,
+        status: 422,
         headers: new Map(),
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              success: false,
+              errors: [{ message: 'Could not convert HTML', code: 2012 }],
+            })
+          ),
       });
 
-      await call('fetchContent', { url: 'https://example.com' });
+      await expect(
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any)
+      ).rejects.toThrow('Markdown fetch failed (422): Could not convert HTML');
+    });
 
-      expect(mockFetch.mock.calls[0][1].headers).toEqual(
-        expect.objectContaining({
-          Authorization: 'Bearer test-api-token',
-          'Content-Type': 'application/json',
-        })
-      );
+    it('falls back to the raw body for non-JSON errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        headers: new Map(),
+        text: () => Promise.resolve('Bad Gateway'),
+      });
+
+      await expect(
+        api.fetchContent({ data: { url: 'https://example.com' } } as any)
+      ).rejects.toThrow('Content fetch failed (502): Bad Gateway');
+    });
+
+    it('does not leak env key names when a secret is missing', async () => {
+      // Regression guard: the old getEnvVar interpolated
+      // Object.keys(process.env) into an error that reached the browser.
+      env.CF_API_TOKEN = '';
+
+      const error = await api
+        .fetchContent({ data: { url: 'https://example.com' } } as any)
+        .then(
+          () => null,
+          (e: Error) => e
+        );
+
+      expect(error?.message).toMatch(/Server misconfigured: CF_API_TOKEN/);
+      expect(error?.message).not.toMatch(/LIMITER/);
+      expect(error?.message).not.toMatch(/CF_ACCOUNT_ID/);
     });
   });
 });
