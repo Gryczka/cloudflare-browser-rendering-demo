@@ -97,13 +97,26 @@ The demo covers every Browser Run Quick Action available over REST:
 | `/scrape` | POST | Extract structured data from specific elements using CSS selectors |
 | `/json` | POST | AI-powered structured data extraction using a prompt or JSON schema |
 | `/links` | POST | Discover all links on a page — useful for site mapping and SEO analysis |
-| `/snapshot` | POST | Capture both a screenshot and rendered HTML in a single request |
+| `/snapshot` | POST | Capture up to four representations in one render — screenshot, HTML, Markdown, accessibility tree |
+| `/accessibilityTree` | POST | Chrome's semantic tree: roles, names, values, hierarchy |
 | `/crawl` | POST | Start an asynchronous multi-page crawl with configurable depth and limits |
 | `/crawl/:jobId` | GET | Poll crawl job status and retrieve results |
 
-Not yet covered: [`/accessibilityTree`](https://developers.cloudflare.com/browser-run/quick-actions/accessibility-tree-endpoint/),
-the multi-format [`/snapshot` `formats`](https://developers.cloudflare.com/browser-run/quick-actions/snapshot/) parameter,
-and the [Browser Sessions](https://developers.cloudflare.com/browser-run/playwright/) half of the product.
+Every Quick Action available over REST is covered. Still to come: the
+[Browser Sessions](https://developers.cloudflare.com/browser-run/playwright/)
+half of the product — Puppeteer/Playwright/CDP control, plus
+[Live View](https://developers.cloudflare.com/browser-run/features/live-view/)
+and [session recording](https://developers.cloudflare.com/browser-run/features/session-recording/) —
+and the `env.BROWSER.quickAction()` binding, which removes the API token and the
+external HTTP hop entirely.
+
+Two details worth knowing if you build against these:
+
+- **`/snapshot` requires at least two formats.** Asking for one returns a
+  validation error telling you to use that format's own endpoint. The demo
+  enforces this client-side.
+- **`/json`'s `response_format.json_schema` takes the bare JSON Schema**, not
+  OpenAI's `{ name, schema, strict }` wrapper.
 
 ---
 

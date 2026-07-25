@@ -9,6 +9,7 @@ import {
   Link2,
   Layers,
   Globe,
+  Accessibility,
 } from 'lucide-react';
 import { Callout } from '../components/Callout';
 
@@ -78,6 +79,15 @@ const features = [
       'Capture both the rendered HTML and a screenshot in a single request. Two outputs, one API call.',
     to: '/snapshot',
     endpoint: '/snapshot',
+  },
+  {
+    icon: Accessibility,
+    title: 'Accessibility Tree',
+    description:
+      "Capture Chrome's semantic tree — roles, names, and hierarchy. A compact structural view of a page for AI agents.",
+    to: '/accessibility',
+    endpoint: '/accessibilityTree',
+    badge: 'NEW',
   },
   {
     icon: Globe,

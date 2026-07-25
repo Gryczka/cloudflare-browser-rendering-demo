@@ -14,7 +14,8 @@ interface DemoPageProps {
   inputPlaceholder?: string;
   pills?: Array<{ label: string; value: string }>;
   children?: ReactNode;
-  badge?: 'beta';
+  /** `beta` for endpoints Cloudflare marks beta, `new` for recent additions. */
+  badge?: 'beta' | 'new';
   info: string;
   customForm?: ReactNode;
   onRun?: (url: string) => Promise<void>;
@@ -65,6 +66,7 @@ export default function DemoPage({
         <div className="flex items-center gap-3 mb-2">
           <h2 className="text-3xl font-semibold tracking-tight text-cf-text">{title}</h2>
           {badge === 'beta' && <Badge variant="warning">BETA</Badge>}
+          {badge === 'new' && <Badge variant="info">NEW</Badge>}
         </div>
         <p className="text-cf-text-muted text-lg">{description}</p>
         <p className="font-mono text-sm text-cf-text-subtle mt-1">{endpoint}</p>

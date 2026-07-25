@@ -21,9 +21,11 @@ const apiCode = `const resp = await fetch(
     body: JSON.stringify({
       url: 'https://example.com',
       prompt: 'Extract the main heading and all links',
+      // Optional. Note json_schema holds the bare schema — not OpenAI's
+      // { name, schema, strict } wrapper.
       response_format: {
         type: 'json_schema',
-        schema: {
+        json_schema: {
           type: 'object',
           properties: {
             heading: { type: 'string' },
@@ -34,44 +36,102 @@ const apiCode = `const resp = await fetch(
     }),
   }
 );
-// Returns: { success: true, result: { ... } }`;
+const { result } = await resp.json();
+// result is the extracted object, conforming to the schema when one is given.
+// Defaults to Workers AI @cf/meta/llama-3.3-70b-instruct-fp8-fast,
+// which bills against your Workers AI usage.`;
 
 const presets = [
   {
     label: 'Extract headings',
     url: 'https://example.com',
     prompt: 'Extract the main heading and description text from this page',
+    schema: '',
   },
   {
     label: 'Product info',
     url: 'https://developers.cloudflare.com/browser-run/',
     prompt:
       'Extract the product name, description, and list of features or integration methods',
+    schema: '',
   },
   {
-    label: 'News titles',
+    label: 'News titles + schema',
     url: 'https://news.ycombinator.com',
     prompt: 'Extract the top 5 story titles with their URLs and point counts',
+    schema: JSON.stringify(
+      {
+        type: 'object',
+        properties: {
+          stories: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                url: { type: 'string' },
+                points: { type: 'number' },
+              },
+              required: ['title'],
+            },
+          },
+        },
+      },
+      null,
+      2
+    ),
   },
 ];
 
 function JsonDemo() {
   const [url, setUrl] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [schemaText, setSchemaText] = useState('');
+  const [useSchema, setUseSchema] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [browserMs, setBrowserMs] = useState<number | null>(null);
 
+  // Validate the schema as the user types so Run can be blocked before a
+  // round-trip, rather than surfacing a 400 from the API.
+  let schemaError: string | null = null;
+  let parsedSchema: Record<string, unknown> | null = null;
+  if (useSchema && schemaText.trim()) {
+    try {
+      const parsed = JSON.parse(schemaText);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        schemaError = 'Schema must be a JSON object.';
+      } else {
+        parsedSchema = parsed;
+      }
+    } catch (e: any) {
+      schemaError = `Invalid JSON: ${e.message}`;
+    }
+  }
+
+  // The endpoint needs a prompt, a schema, or both.
+  const canRun =
+    !!url.trim() &&
+    (!!prompt.trim() || !!parsedSchema) &&
+    !schemaError &&
+    !loading;
+
   const handleRun = async () => {
-    if (!url.trim() || !prompt.trim()) return;
+    if (!canRun) return;
     setLoading(true);
     setError(null);
     setResult(null);
     setBrowserMs(null);
     try {
       const res = await extractJson({
-        data: { url, prompt },
+        data: {
+          url,
+          prompt: prompt.trim() || undefined,
+          response_format: parsedSchema
+            ? { type: 'json_schema', json_schema: parsedSchema }
+            : undefined,
+        },
       });
       setResult(res.result);
       setBrowserMs(res.browserMs);
@@ -101,7 +161,7 @@ function JsonDemo() {
               copyContent={JSON.stringify(result, null, 2)}
               download={{ data: JSON.stringify(result, null, 2), filename: 'json-extract.json', mime: 'application/json' }}
             />
-            <div className="bg-cf-code-bg rounded-lg p-4 overflow-auto max-h-[500px]">
+            <div className="dark-surface max-h-[500px] overflow-auto rounded-lg p-4">
               <SyntaxHighlight code={JSON.stringify(result, null, 2)} language="json" className="text-xs" />
             </div>
           </div>
@@ -118,7 +178,7 @@ function JsonDemo() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Enter a URL..."
-              className="w-full px-4 py-3 rounded-xl border border-cf-border bg-white text-cf-text placeholder-cf-text-muted focus:outline-none focus:border-cf-orange focus:ring-2 focus:ring-cf-orange/20 transition-all"
+              className="w-full px-4 py-3 rounded-xl border border-cf-border bg-cf-bg-200 text-cf-text placeholder-cf-text-muted focus:outline-none focus:border-cf-orange focus:ring-2 focus:ring-cf-orange/20 transition-all"
             />
           </div>
           <div>
@@ -130,14 +190,58 @@ function JsonDemo() {
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe what data to extract..."
               rows={3}
-              className="w-full px-4 py-3 rounded-xl border border-cf-border bg-white text-cf-text placeholder-cf-text-muted focus:outline-none focus:border-cf-orange focus:ring-2 focus:ring-cf-orange/20 transition-all text-sm"
+              className="w-full px-4 py-3 rounded-xl border border-cf-border bg-cf-bg-200 text-cf-text placeholder-cf-text-muted focus:outline-none focus:border-cf-orange focus:ring-2 focus:ring-cf-orange/20 transition-all text-sm"
             />
           </div>
+
+          <div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-cf-text">
+              <input
+                type="checkbox"
+                checked={useSchema}
+                onChange={(e) => setUseSchema(e.target.checked)}
+                className="accent-cf-orange"
+              />
+              Constrain output with a JSON Schema
+              <span className="font-mono text-xs text-cf-text-subtle">
+                response_format
+              </span>
+            </label>
+
+            {useSchema && (
+              <div className="mt-2">
+                <textarea
+                  value={schemaText}
+                  onChange={(e) => setSchemaText(e.target.value)}
+                  placeholder={'{\n  "type": "object",\n  "properties": { "title": { "type": "string" } }\n}'}
+                  rows={9}
+                  spellCheck={false}
+                  className={`w-full rounded-xl border bg-cf-bg-200 px-4 py-3 font-mono text-xs text-cf-text transition-all placeholder-cf-text-subtle focus:ring-2 focus:ring-cf-orange/20 focus:outline-none ${schemaError ? 'border-cf-error' : 'border-cf-border focus:border-cf-orange'}`}
+                />
+                {schemaError ? (
+                  <p className="mt-1 text-xs text-cf-error">{schemaError}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-cf-text-subtle">
+                    Sent as{' '}
+                    <span className="font-mono">
+                      response_format.json_schema
+                    </span>{' '}
+                    — the bare schema, not OpenAI&rsquo;s{' '}
+                    <span className="font-mono">
+                      {'{ name, schema, strict }'}
+                    </span>{' '}
+                    wrapper.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-3">
             <button
               onClick={handleRun}
-              disabled={loading || !url.trim() || !prompt.trim()}
-              className="px-6 py-3 bg-cf-orange hover:bg-cf-orange-dark text-white font-semibold rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              disabled={!canRun}
+              className="btn-base btn-primary"
             >
               {loading ? 'Extracting...' : 'Run'}
             </button>
@@ -146,9 +250,12 @@ function JsonDemo() {
                 <PillButton
                   key={p.label}
                   label={p.label}
+                  active={url === p.url && prompt === p.prompt}
                   onClick={() => {
                     setUrl(p.url);
                     setPrompt(p.prompt);
+                    setSchemaText(p.schema);
+                    setUseSchema(!!p.schema);
                   }}
                 />
               ))}

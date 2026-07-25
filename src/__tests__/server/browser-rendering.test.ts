@@ -201,6 +201,161 @@ describe('Browser Run server functions', () => {
     });
   });
 
+  // ─── Accessibility tree ───────────────────────────────────────────
+
+  describe('fetchAccessibilityTree', () => {
+    it('unwraps the tree and posts to the browser-rendering path', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          accessibilityTree: {
+            role: 'RootWebArea',
+            name: 'Example Domain',
+            children: [{ role: 'heading', name: 'Example Domain', level: 1 }],
+          },
+        })
+      );
+
+      const result = await api.fetchAccessibilityTree({
+        data: { url: 'https://example.com' },
+      } as any);
+
+      // The docs page prints /browser-run/accessibilityTree, but the OpenAPI
+      // spec and every sibling endpoint use /browser-rendering/.
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${BASE}/accessibilityTree`,
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(result.tree?.role).toBe('RootWebArea');
+      expect(result.tree?.children?.[0].level).toBe(1);
+    });
+
+    it('forwards interestingOnly and root', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ accessibilityTree: null }));
+
+      await api.fetchAccessibilityTree({
+        data: { url: 'https://example.com', interestingOnly: false, root: 'main' },
+      } as any);
+
+      const body = bodyOf(mockFetch.mock.calls[0]);
+      expect(body.interestingOnly).toBe(false);
+      expect(body.root).toBe('main');
+    });
+
+    it('returns null when a root selector matches nothing', async () => {
+      // The API answers 200 with a null tree rather than erroring.
+      mockFetch.mockResolvedValueOnce(jsonResponse({ accessibilityTree: null }));
+
+      const result = await api.fetchAccessibilityTree({
+        data: { url: 'https://example.com', root: '.nope' },
+      } as any);
+
+      expect(result.tree).toBeNull();
+    });
+  });
+
+  // ─── Snapshot formats ─────────────────────────────────────────────
+
+  describe('snapshot formats', () => {
+    it('defaults to content + screenshot', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ content: '<html/>' }));
+
+      await api.takeSnapshot({ data: { url: 'https://example.com' } } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).formats).toEqual([
+        'content',
+        'screenshot',
+      ]);
+    });
+
+    it('rejects a single format before calling the API', async () => {
+      await expect(
+        api.takeSnapshot({
+          data: { url: 'https://example.com', formats: ['markdown'] },
+        } as any)
+      ).rejects.toThrow('needs at least two formats');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('drops unrecognised formats', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ markdown: '# x' }));
+
+      await api.takeSnapshot({
+        data: {
+          url: 'https://example.com',
+          formats: ['markdown', 'accessibilityTree', 'nonsense'],
+        },
+      } as any);
+
+      expect(bodyOf(mockFetch.mock.calls[0]).formats).toEqual([
+        'markdown',
+        'accessibilityTree',
+      ]);
+    });
+
+    it('surfaces markdown and the accessibility tree', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          markdown: '# Example Domain',
+          accessibilityTree: { role: 'RootWebArea', name: 'Example Domain' },
+        })
+      );
+
+      const result = await api.takeSnapshot({
+        data: {
+          url: 'https://example.com',
+          formats: ['markdown', 'accessibilityTree'],
+        },
+      } as any);
+
+      expect(result.markdown).toBe('# Example Domain');
+      expect(result.accessibilityTree.role).toBe('RootWebArea');
+      // Not requested, so absent.
+      expect(result.screenshot).toBeNull();
+      expect(result.html).toBeNull();
+    });
+  });
+
+  // ─── JSON schema mode ─────────────────────────────────────────────
+
+  describe('extractJson response_format', () => {
+    it('sends the bare schema under json_schema', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ title: 'x' }));
+
+      const schema = {
+        type: 'object',
+        properties: { title: { type: 'string' } },
+      };
+
+      await api.extractJson({
+        data: {
+          url: 'https://example.com',
+          response_format: { type: 'json_schema', json_schema: schema },
+        },
+      } as any);
+
+      const body = bodyOf(mockFetch.mock.calls[0]);
+      expect(body.response_format).toEqual({
+        type: 'json_schema',
+        json_schema: schema,
+      });
+      // Not OpenAI's { name, schema, strict } wrapper.
+      expect(body.response_format.json_schema.schema).toBeUndefined();
+    });
+
+    it('accepts a schema with no prompt', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ title: 'x' }));
+
+      await expect(
+        api.extractJson({
+          data: {
+            url: 'https://example.com',
+            response_format: { type: 'json_schema', json_schema: { type: 'object' } },
+          },
+        } as any)
+      ).resolves.toBeDefined();
+    });
+  });
+
   // ─── Binary endpoints ─────────────────────────────────────────────
 
   describe('binary endpoints', () => {

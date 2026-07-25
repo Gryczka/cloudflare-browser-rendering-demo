@@ -387,10 +387,21 @@ interface SnapshotPayload {
   accessibilityTree?: any;
 }
 
+/** Formats `/snapshot` can return. At least two must be requested. */
+export const SNAPSHOT_FORMATS = [
+  'content',
+  'screenshot',
+  'markdown',
+  'accessibilityTree',
+] as const;
+
+export type SnapshotFormat = (typeof SNAPSHOT_FORMATS)[number];
+
 export const takeSnapshot = createServerFn({ method: 'POST' })
   .inputValidator(
     (data: {
       url: string;
+      formats?: Array<string>;
       screenshotOptions?: { type?: 'png' | 'webp' | 'jpeg' };
     }) => data
   )
@@ -400,6 +411,23 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
     const body: Record<string, unknown> = {
       url: assertPublicHttpUrl(data.url),
     };
+
+    const requested = (data.formats ?? []).filter((format): format is SnapshotFormat =>
+      (SNAPSHOT_FORMATS as ReadonlyArray<string>).includes(format)
+    );
+
+    // The API rejects a single-format request outright: "This format must be
+    // combined with at least one other format. Use respective endpoint for this
+    // format request." Fail here with a clearer message rather than round-trip.
+    if (requested.length === 1) {
+      throw new Error(
+        `/snapshot needs at least two formats. For just "${requested[0]}", use the dedicated endpoint instead.`
+      );
+    }
+
+    // Default matches the API's own: content + screenshot.
+    body.formats = requested.length > 0 ? requested : ['content', 'screenshot'];
+
     if (data.screenshotOptions) body.screenshotOptions = data.screenshotOptions;
 
     const { result, browserMs, meta } = await callQuickAction<SnapshotPayload>(
@@ -415,6 +443,55 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
         ? `data:image/png;base64,${result.screenshot}`
         : null,
       html: result.content ?? null,
+      markdown: result.markdown ?? null,
+      accessibilityTree: result.accessibilityTree ?? null,
+      formats: body.formats as Array<SnapshotFormat>,
+      browserMs,
+      meta,
+    };
+  });
+
+// ─── Accessibility tree ──────────────────────────────────────────────
+
+/**
+ * A node in the accessibility tree. Cloudflare returns Chrome's a11y tree,
+ * which is a far more token-efficient structural view of a page than raw HTML —
+ * the reason this endpoint exists is to feed agents without parsing the DOM.
+ */
+export interface AccessibilityNode {
+  role: string;
+  name?: string;
+  value?: string;
+  level?: number;
+  children?: Array<AccessibilityNode>;
+  [key: string]: any;
+}
+
+export const fetchAccessibilityTree = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (data: { url: string; interestingOnly?: boolean; root?: string }) => data
+  )
+  .handler(async ({ data }) => {
+    await enforceRateLimit('quickAction');
+
+    const body: Record<string, unknown> = {
+      url: assertPublicHttpUrl(data.url),
+    };
+
+    if (typeof data.interestingOnly === 'boolean') {
+      body.interestingOnly = data.interestingOnly;
+    }
+    if (data.root?.trim()) {
+      body.root = data.root.trim().slice(0, 200);
+    }
+
+    const { result, browserMs, meta } = await callQuickAction<{
+      accessibilityTree: AccessibilityNode | null;
+    }>('/accessibilityTree', body, 'Accessibility tree');
+
+    return {
+      // A `root` selector that matches nothing returns 200 with a null tree.
+      tree: result.accessibilityTree ?? null,
       browserMs,
       meta,
     };

@@ -10,6 +10,7 @@ import {
   Link2,
   Layers,
   Globe,
+  Accessibility,
 } from 'lucide-react';
 
 const CF_LOGO = (
@@ -36,7 +37,8 @@ const navSections = [
       { num: '06', label: 'JSON (AI)', to: '/json', icon: Brain },
       { num: '07', label: 'Links', to: '/links', icon: Link2 },
       { num: '08', label: 'Snapshot', to: '/snapshot', icon: Layers },
-      { num: '09', label: 'Crawl', to: '/crawl', icon: Globe, badge: 'BETA' },
+      { num: '09', label: 'A11y Tree', to: '/accessibility', icon: Accessibility, badge: 'NEW' },
+      { num: '10', label: 'Crawl', to: '/crawl', icon: Globe, badge: 'BETA' },
     ],
   },
 ] as const;
