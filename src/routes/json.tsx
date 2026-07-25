@@ -44,7 +44,7 @@ const presets = [
   },
   {
     label: 'Product info',
-    url: 'https://developers.cloudflare.com/browser-rendering/',
+    url: 'https://developers.cloudflare.com/browser-run/',
     prompt:
       'Extract the product name, description, and list of features or integration methods',
   },

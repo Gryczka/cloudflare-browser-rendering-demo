@@ -96,7 +96,7 @@ function Home() {
       {/* Hero */}
       <div className="mb-10">
         <h1 className="text-5xl font-bold tracking-tight text-cf-text mb-3">
-          Browser Rendering
+          Browser Run
         </h1>
         <p className="text-xl text-cf-text-muted max-w-2xl">
           Run headless Chrome on Cloudflare's global network. Capture
@@ -105,7 +105,7 @@ function Home() {
         </p>
         <div className="flex gap-4 mt-6">
           <a
-            href="https://developers.cloudflare.com/browser-rendering/"
+            href="https://developers.cloudflare.com/browser-run/"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-base btn-primary"
@@ -113,12 +113,12 @@ function Home() {
             Documentation
           </a>
           <a
-            href="https://developers.cloudflare.com/browser-rendering/rest-api/"
+            href="https://developers.cloudflare.com/browser-run/quick-actions/"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-base btn-ghost"
           >
-            REST API Reference
+            Quick Actions Reference
           </a>
         </div>
       </div>
@@ -126,7 +126,7 @@ function Home() {
       {/* Endpoints Grid */}
       <div className="mb-8">
         <h2 className="text-[10px] font-medium text-cf-text-subtle uppercase tracking-wider mb-4">
-          REST API Endpoints
+          Quick Actions
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((feature) => (
@@ -166,9 +166,9 @@ function Home() {
       {/* Info */}
       <Callout>
         <strong className="text-cf-text">Getting started:</strong> Each demo
-        page lets you try the Browser Rendering REST API interactively. Enter a
-        URL, click Run, and see the results. The API calls are proxied through
-        the Worker backend using your configured Cloudflare API token.
+        page lets you try one Browser Run Quick Action interactively. Enter a URL,
+        click Run, and see the result. Requests are proxied through the Worker,
+        which injects the API token server-side.
       </Callout>
     </div>
   );

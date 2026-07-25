@@ -3,8 +3,8 @@ import { Reveal } from '../components/reveal';
 import type { SlideProperties } from '../types';
 
 const LINKS = [
-  { label: 'Documentation', url: 'developers.cloudflare.com/browser-rendering/' },
-  { label: 'REST API Reference', url: 'developers.cloudflare.com/browser-rendering/rest-api/' },
+  { label: 'Documentation', url: 'developers.cloudflare.com/browser-run/' },
+  { label: 'REST API Reference', url: 'developers.cloudflare.com/browser-run/quick-actions/' },
   { label: 'Cloudflare Dashboard', url: 'dash.cloudflare.com' },
 ];
 

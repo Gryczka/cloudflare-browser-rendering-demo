@@ -12,8 +12,8 @@ const CODE = `const resp = await fetch(
   }
 );
 const { result } = await resp.json();
-// result contains all links found on the page
-// [{ href: "https://...", text: "...", rel: "..." }, ...]`;
+// result is a flat array of absolute URL strings
+// ["https://example.com/", "https://example.com/about", ...]`;
 
 export function LinksSlide({ step }: SlideProperties) {
   return (

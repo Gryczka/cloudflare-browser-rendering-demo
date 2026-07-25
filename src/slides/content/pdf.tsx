@@ -3,27 +3,32 @@ import { SlideLayout } from '../components/slide-layout';
 import { SlideTitle } from '../components/slide-title';
 import type { SlideProperties } from '../types';
 
-const CODE = `GET /pdf?url=https://example.com
+const CODE = `POST /pdf
+{ "url": "https://example.com" }
 
-# With options
-GET /pdf?url=https://example.com
-    &format=A4
-    &landscape=false
-    &print_background=true
-    &scale=1
-    &margin_top=1cm
-    &margin_bottom=1cm
-
-# From custom HTML (POST)
+// With options — pdfOptions, not top-level query params.
 POST /pdf
-Content-Type: application/json
-
 {
-  "html": "<h1>Hello World</h1><p>Generated PDF</p>",
-  "format": "A4"
+  "url": "https://example.com",
+  "pdfOptions": {
+    "format": "A4",
+    "landscape": false,
+    "printBackground": true,
+    "scale": 1,
+    "margin": { "top": "1cm", "bottom": "1cm" },
+    "displayHeaderFooter": true,
+    "footerTemplate": "<span class=pageNumber></span>"
+  }
 }
 
-# Response: application/pdf`;
+// From custom HTML instead of a URL
+POST /pdf
+{
+  "html": "<h1>Hello World</h1><p>Generated PDF</p>",
+  "pdfOptions": { "format": "A4" }
+}
+
+// Response: application/pdf (50 MB request body limit)`;
 
 export function PDFSlide({ step }: SlideProperties) {
   return (

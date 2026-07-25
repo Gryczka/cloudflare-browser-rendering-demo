@@ -18,8 +18,8 @@ import type { SlideDefinition } from './types';
 
 export const SLIDES: SlideDefinition[] = [
   // Intro arc: what, why, how
-  { id: 'title', title: 'Browser Rendering', component: TitleSlide, steps: TitleSlide.steps },
-  { id: 'problem', title: 'Why Browser Rendering', component: ProblemSlide, steps: ProblemSlide.steps },
+  { id: 'title', title: 'Browser Run', component: TitleSlide, steps: TitleSlide.steps },
+  { id: 'problem', title: 'Why Browser Run', component: ProblemSlide, steps: ProblemSlide.steps },
   { id: 'use-cases', title: 'Use Cases', component: UseCasesSlide, steps: UseCasesSlide.steps },
   { id: 'architecture', title: 'How it Works', component: ArchitectureSlide, steps: ArchitectureSlide.steps },
   { id: 'setup', title: 'Getting Started', component: SetupSlide, steps: SetupSlide.steps },

@@ -15,7 +15,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'Cloudflare Browser Rendering Demo' },
+      { title: 'Cloudflare Browser Run Explorer' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
@@ -76,7 +76,7 @@ function RootLayout() {
                   ease: 'easeInOut',
                 }}
               />
-              <span>Browser Rendering API ready</span>
+              <span>Browser Run · Quick Actions</span>
             </div>
 
             <div className="flex items-center gap-3">

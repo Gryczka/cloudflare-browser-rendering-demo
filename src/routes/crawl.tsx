@@ -50,7 +50,7 @@ const presets = [
   { label: 'example.com', url: 'https://example.com' },
   {
     label: 'CF BR Docs',
-    url: 'https://developers.cloudflare.com/browser-rendering/',
+    url: 'https://developers.cloudflare.com/browser-run/',
   },
   { label: 'blog.cloudflare.com', url: 'https://blog.cloudflare.com/' },
 ];

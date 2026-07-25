@@ -27,7 +27,7 @@ export function TitleSlide({ step }: SlideProperties) {
         {/* Title */}
         <Reveal visible={step >= 0} direction="up" delay={0.1}>
           <h1 className="font-sans text-7xl font-bold tracking-tight text-cf-text">
-            Browser Rendering
+            Browser Run
           </h1>
         </Reveal>
 
@@ -41,7 +41,7 @@ export function TitleSlide({ step }: SlideProperties) {
         {/* API URL pill — step 1 */}
         <Reveal visible={step >= 1} direction="up" delay={0.1}>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-cf-border bg-cf-bg-200 px-5 py-2.5 font-mono text-sm text-cf-text-muted shadow-card">
-            <span className="text-cf-orange">GET</span>
+            <span className="text-cf-orange">POST</span>
             <span className="text-cf-text-subtle">/</span>
             <span>https://api.cloudflare.com/client/v4/accounts/:account_id/browser-rendering</span>
           </div>

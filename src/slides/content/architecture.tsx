@@ -4,7 +4,7 @@ import { SlideLayout } from '../components/slide-layout';
 import type { SlideProperties } from '../types';
 
 const steps = [
-  { num: '1', title: 'REST API Call', description: 'Send a request to the Browser Rendering endpoint' },
+  { num: '1', title: 'REST API Call', description: 'Send a request to a Browser Run Quick Action' },
   { num: '2', title: 'Headless Chrome', description: 'Cloudflare spins up a browser on the nearest edge' },
   { num: '3', title: 'Returns Result', description: 'Get screenshots, PDFs, HTML, Markdown, or JSON back' },
 ];

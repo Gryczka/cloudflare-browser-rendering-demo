@@ -43,7 +43,7 @@ const presets = [
   },
   {
     label: 'CF docs nav',
-    url: 'https://developers.cloudflare.com/browser-rendering/',
+    url: 'https://developers.cloudflare.com/browser-run/',
     selectors: 'h1, h2, a',
   },
 ];

@@ -2,16 +2,18 @@ import { Reveal } from '../components/reveal';
 import { SlideLayout } from '../components/slide-layout';
 import type { SlideProperties } from '../types';
 
-const CODE = `# Base URL
+const CODE = `# Base URL (the API path is still /browser-rendering)
 https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering
 
 # Authentication header
 Authorization: Bearer {api_token}
 
 # Example: take a screenshot
-curl -X GET \\
-  "https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering/screenshot?url=https://example.com" \\
+curl -X POST \\
+  "https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering/screenshot" \\
   -H "Authorization: Bearer {api_token}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "https://example.com"}' \\
   --output screenshot.png`;
 
 export function SetupSlide({ step }: SlideProperties) {

@@ -3,16 +3,24 @@ import { SlideLayout } from '../components/slide-layout';
 import { SlideTitle } from '../components/slide-title';
 import type { SlideProperties } from '../types';
 
-const CODE = `GET /screenshot?url=https://example.com&viewport_width=1280&viewport_height=720
+const CODE = `POST /screenshot
+{ "url": "https://example.com" }
 
-# With options
-GET /screenshot?url=https://example.com
-    &format=webp
-    &quality=90
-    &full_page=true
-    &wait_for_selector=.main-content
+// With options — note these are nested, not query params.
+POST /screenshot
+{
+  "url": "https://example.com",
+  "screenshotOptions": {
+    "type": "webp",
+    "quality": 90,
+    "fullPage": true
+  },
+  "viewport": { "width": 1280, "height": 720 },
+  "waitForSelector": { "selector": ".main-content" }
+}
 
-# Response: binary image (PNG, WebP, or JPEG)`;
+// Response: binary image bytes (PNG, WebP, or JPEG).
+// The default viewport is 1920x1080.`;
 
 export function ScreenshotSlide({ step }: SlideProperties) {
   return (

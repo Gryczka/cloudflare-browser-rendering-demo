@@ -1,26 +1,28 @@
-# Cloudflare Browser Rendering API Demo
+# Cloudflare Browser Run API Explorer
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Gryczka/cloudflare-browser-rendering-demo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Powered by Cloudflare Workers](https://img.shields.io/badge/Powered%20by-Cloudflare%20Workers-F38020)](https://workers.cloudflare.com)
 
-An interactive demo application showcasing every endpoint of the [Cloudflare Browser Rendering REST API](https://developers.cloudflare.com/browser-rendering/rest-api/). Built with [TanStack Start](https://tanstack.com/start) on [Cloudflare Workers](https://workers.cloudflare.com).
+An interactive playground for the [Cloudflare Browser Run](https://developers.cloudflare.com/browser-run/) Quick Actions API — screenshots, PDFs, rendered HTML, Markdown, CSS scraping, AI-powered JSON extraction, link discovery, snapshots, and multi-page crawling. Built with [TanStack Start](https://tanstack.com/start) on [Cloudflare Workers](https://workers.cloudflare.com).
+
+> **Naming note:** Browser Rendering was [renamed Browser Run](https://developers.cloudflare.com/changelog/post/2026-04-15-br-rename/) in April 2026. The REST endpoints are now called **Quick Actions**, and the Puppeteer/Playwright/CDP path is called **Browser Sessions**. The API path (`/accounts/{id}/browser-rendering/...`) and the `Browser Rendering - Edit` token permission are unchanged.
 
 **Live demo:** https://cloudflare-browser-rendering-demo.dwarven.workers.dev/
 
 ---
 
-[![Cloudflare Browser Rendering Demo screenshot](docs/screenshot.png)](https://cloudflare-browser-rendering-demo.dwarven.workers.dev/)
+[![Cloudflare Browser Run Explorer screenshot](docs/screenshot.png)](https://cloudflare-browser-rendering-demo.dwarven.workers.dev/)
 
 ---
 
 ## What This Demonstrates
 
-This project is a hands-on walkthrough of the [Cloudflare Browser Rendering API](https://developers.cloudflare.com/browser-rendering/), structured as an interactive playground where you can try every endpoint directly in your browser.
+This project is a hands-on walkthrough of [Cloudflare Browser Run](https://developers.cloudflare.com/browser-run/), structured as an interactive playground where you can try every Quick Action directly in your browser.
 
 | Concept | What You Learn |
 | --- | --- |
-| **Browser Rendering REST API** | How to use Cloudflare's headless Chrome service via simple HTTP calls — screenshots, PDFs, content extraction, AI-powered JSON extraction, and full-site crawling |
+| **Browser Run Quick Actions** | How to use Cloudflare's headless Chrome service via simple HTTP calls — screenshots, PDFs, content extraction, AI-powered JSON extraction, and full-site crawling |
 | **Cloudflare Workers** | Serverless TypeScript running on Cloudflare's global edge network (300+ locations) |
 | **TanStack Start** | Full-stack React framework with server functions that run natively on Workers |
 | **Server Functions** | Type-safe RPC-style calls from the browser to the Worker backend — no manual API routes needed |
@@ -44,7 +46,7 @@ graph TB
     end
 
     subgraph CFAPI["Cloudflare API"]
-        BR["Browser Rendering<br/>REST API"]
+        BR["Browser Run<br/>Quick Actions"]
     end
 
     subgraph Chrome["Cloudflare Network"]
@@ -74,7 +76,7 @@ graph TB
 
 1. The user interacts with the React UI (TanStack Router handles client-side routing)
 2. Each demo page calls a **TanStack Start server function** — these execute on the Worker, not in the browser
-3. The server function makes an authenticated REST API call to the Cloudflare Browser Rendering API
+3. The server function makes an authenticated Quick Actions call to the Browser Run API
 4. Cloudflare spins up a headless Chrome instance, navigates to the target URL, and performs the requested action
 5. The result (screenshot bytes, PDF, HTML, Markdown, structured JSON, etc.) flows back through the Worker to the UI
 
@@ -84,7 +86,7 @@ The Worker acts as a **thin proxy** — its only job is to inject the API token 
 
 ## API Endpoints
 
-The demo covers every endpoint in the Browser Rendering REST API:
+The demo covers every Browser Run Quick Action available over REST:
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
@@ -98,6 +100,32 @@ The demo covers every endpoint in the Browser Rendering REST API:
 | `/snapshot` | POST | Capture both a screenshot and rendered HTML in a single request |
 | `/crawl` | POST | Start an asynchronous multi-page crawl with configurable depth and limits |
 | `/crawl/:jobId` | GET | Poll crawl job status and retrieve results |
+
+Not yet covered: [`/accessibilityTree`](https://developers.cloudflare.com/browser-run/quick-actions/accessibility-tree-endpoint/),
+the multi-format [`/snapshot` `formats`](https://developers.cloudflare.com/browser-run/quick-actions/snapshot/) parameter,
+and the [Browser Sessions](https://developers.cloudflare.com/browser-run/playwright/) half of the product.
+
+---
+
+## Demo Guardrails
+
+This is deployed publicly without authentication, so every button spends real
+Browser Run quota on the owner's account. Three layers keep that bounded — see
+[`src/server/guards.ts`](src/server/guards.ts):
+
+| Guard | Behaviour |
+| --- | --- |
+| **URL validation** | Rejects anything that is not a public `http(s)` URL. Loopback, RFC1918 private ranges, link-local (including the `169.254.169.254` metadata endpoint), and `.local`/`.internal` hosts are refused before any API call. |
+| **Rate limiting** | The native [Workers rate limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), keyed on client IP, with separate namespaces for Quick Actions (20/min) and crawl (3/min). Note these counters are per-Cloudflare-location and eventually consistent, so they bound bursts rather than global spend. |
+| **Crawl ceilings** | `limit` is capped at 100 pages and `depth` at 5, versus the API's own maxima of 100,000 each. This is the control that actually bounds cost. |
+
+Two crawl defaults are deliberate:
+
+- **`render: false`** — non-rendered crawls run on Workers instead of a headless
+  browser, consume no browser time, and are unbilled during the beta.
+- **`crawlPurposes: ['search', 'ai-input']`** — the API default also includes
+  `ai-train`, and any site whose [Content Signals](https://contentsignals.org/)
+  set `ai-train=no` rejects the entire job with a `400`.
 
 ---
 
@@ -211,9 +239,14 @@ Wrangler bundles the TypeScript, uploads the Worker script, and deploys static a
 
 ## Key Concepts
 
-### Cloudflare Browser Rendering
+### Cloudflare Browser Run
 
-[Browser Rendering](https://developers.cloudflare.com/browser-rendering/) gives you access to headless Chrome instances running on Cloudflare's network. Instead of managing browser infrastructure yourself, you make REST API calls and Cloudflare handles the browser lifecycle. Use cases include:
+[Browser Run](https://developers.cloudflare.com/browser-run/) gives you access to headless Chrome instances running on Cloudflare's network. Instead of managing browser infrastructure yourself, you make API calls and Cloudflare handles the browser lifecycle. It splits into two halves:
+
+- **Quick Actions** — one-shot HTTP endpoints for common tasks. This is what the demo covers.
+- **Browser Sessions** — full [Puppeteer](https://developers.cloudflare.com/browser-run/puppeteer/), [Playwright](https://developers.cloudflare.com/browser-run/playwright/), or [CDP](https://developers.cloudflare.com/browser-run/cdp/) control for multi-step automation, with [Live View](https://developers.cloudflare.com/browser-run/features/live-view/) and [session recording](https://developers.cloudflare.com/browser-run/features/session-recording/).
+
+Use cases include:
 
 - **Screenshots & PDFs** — visual capture of any webpage
 - **Content extraction** — get fully-rendered HTML/Markdown after JavaScript execution
@@ -222,7 +255,7 @@ Wrangler bundles the TypeScript, uploads the Worker script, and deploys static a
 
 ### TanStack Start Server Functions
 
-[Server functions](https://tanstack.com/start/latest/docs/framework/react/server-functions) are TypeScript functions that execute on the server but are called from the client like regular async functions. In this project, every Browser Rendering API call is wrapped in a server function (see `src/server/browser-rendering.ts`), which:
+[Server functions](https://tanstack.com/start/latest/docs/framework/react/server-functions) are TypeScript functions that execute on the server but are called from the client like regular async functions. In this project, every Browser Run call is wrapped in a server function (see `src/server/browser-rendering.ts`), which:
 
 1. Reads the API credentials from environment variables (never exposed to the client)
 2. Constructs the REST API request with proper authentication

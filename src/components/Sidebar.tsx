@@ -18,16 +18,27 @@ const CF_LOGO = (
   </svg>
 );
 
-const navItems = [
-  { num: '01', label: 'Screenshot', to: '/screenshot', icon: Camera },
-  { num: '02', label: 'PDF', to: '/pdf', icon: FileDown },
-  { num: '03', label: 'Content', to: '/content', icon: Code },
-  { num: '04', label: 'Markdown', to: '/markdown', icon: FileText },
-  { num: '05', label: 'Scrape', to: '/scrape', icon: Scissors },
-  { num: '06', label: 'JSON (AI)', to: '/json', icon: Brain },
-  { num: '07', label: 'Links', to: '/links', icon: Link2 },
-  { num: '08', label: 'Snapshot', to: '/snapshot', icon: Layers },
-  { num: '09', label: 'Crawl', to: '/crawl', icon: Globe, badge: 'BETA' },
+/**
+ * Browser Run splits into two halves: Quick Actions (one-shot HTTP endpoints)
+ * and Browser Sessions (Puppeteer/Playwright/CDP). Grouping the nav this way
+ * mirrors the product's own vocabulary and leaves an obvious slot for the
+ * Sessions pages.
+ */
+const navSections = [
+  {
+    label: 'Quick Actions',
+    items: [
+      { num: '01', label: 'Screenshot', to: '/screenshot', icon: Camera },
+      { num: '02', label: 'PDF', to: '/pdf', icon: FileDown },
+      { num: '03', label: 'Content', to: '/content', icon: Code },
+      { num: '04', label: 'Markdown', to: '/markdown', icon: FileText },
+      { num: '05', label: 'Scrape', to: '/scrape', icon: Scissors },
+      { num: '06', label: 'JSON (AI)', to: '/json', icon: Brain },
+      { num: '07', label: 'Links', to: '/links', icon: Link2 },
+      { num: '08', label: 'Snapshot', to: '/snapshot', icon: Layers },
+      { num: '09', label: 'Crawl', to: '/crawl', icon: Globe, badge: 'BETA' },
+    ],
+  },
 ] as const;
 
 export default function Sidebar() {
@@ -44,50 +55,57 @@ export default function Sidebar() {
             Cloudflare
           </span>
           <span className="text-lg font-medium tracking-tight text-cf-text">
-            Browser Rendering
+            Browser Run
           </span>
         </div>
       </Link>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentPath === item.to;
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`
-                relative flex w-full items-center gap-2.5 px-5 py-2.5 text-left text-sm
-                transition-colors
-                ${isActive ? 'font-medium text-cf-orange' : 'text-cf-text-muted hover:bg-cf-bg-300 hover:text-cf-text'}
-              `}
-            >
-              {isActive && (
-                <motion.div
-                  className="absolute inset-0 border-l-3 border-l-cf-orange bg-cf-bg-300"
-                  layoutId="sidebar-active"
-                  transition={{
-                    type: 'spring',
-                    stiffness: 380,
-                    damping: 32,
-                  }}
-                />
-              )}
-              <span className="relative z-10 font-mono text-[11px] text-cf-text-subtle">
-                {item.num}
-              </span>
-              <Icon className="relative z-10 size-4 opacity-60" strokeWidth={1.75} />
-              <span className="relative z-10">{item.label}</span>
-              {'badge' in item && item.badge && (
-                <span className="relative z-10 ml-auto font-mono text-[10px] text-cf-orange">
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+        {navSections.map((section) => (
+          <div key={section.label} className="mb-1">
+            <h2 className="px-5 pt-2 pb-1.5 font-sans text-[9px] font-medium tracking-wider text-cf-text-subtle uppercase">
+              {section.label}
+            </h2>
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPath === item.to;
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`
+                    relative flex w-full items-center gap-2.5 px-5 py-2.5 text-left text-sm
+                    transition-colors
+                    ${isActive ? 'font-medium text-cf-orange' : 'text-cf-text-muted hover:bg-cf-bg-300 hover:text-cf-text'}
+                  `}
+                >
+                  {isActive && (
+                    <motion.div
+                      className="absolute inset-0 border-l-3 border-l-cf-orange bg-cf-bg-300"
+                      layoutId="sidebar-active"
+                      transition={{
+                        type: 'spring',
+                        stiffness: 380,
+                        damping: 32,
+                      }}
+                    />
+                  )}
+                  <span className="relative z-10 font-mono text-[11px] text-cf-text-subtle">
+                    {item.num}
+                  </span>
+                  <Icon className="relative z-10 size-4 opacity-60" strokeWidth={1.75} />
+                  <span className="relative z-10">{item.label}</span>
+                  {'badge' in item && item.badge && (
+                    <span className="relative z-10 ml-auto font-mono text-[10px] text-cf-orange">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
     </aside>
   );

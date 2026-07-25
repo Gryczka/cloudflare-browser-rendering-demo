@@ -15,7 +15,7 @@ export function ProblemSlide({ step }: SlideProperties) {
     <SlideLayout>
       <Reveal visible={step >= 0} direction="left" delay={0}>
         <h2 className="font-sans text-5xl font-semibold tracking-tight text-cf-text">
-          Why Browser Rendering?
+          Why Browser Run?
         </h2>
       </Reveal>
 
@@ -40,7 +40,7 @@ export function ProblemSlide({ step }: SlideProperties) {
 
       <Reveal visible={step >= 1} direction="up" delay={0.3}>
         <p className="mt-10 text-center text-lg text-cf-text-muted">
-          Cloudflare Browser Rendering solves all of this with a{' '}
+          Cloudflare Browser Run solves all of this with a{' '}
           <span className="font-semibold text-cf-orange">simple REST API</span>.
         </p>
       </Reveal>
