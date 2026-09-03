@@ -35,6 +35,8 @@ Each demo page lets you enter a URL, click **Run**, and see the API response in 
 
 ## Architecture
 
+![Browser Run Cloudflare architecture](docs/architecture-tile-dark.png)
+
 ```mermaid
 graph TB
     subgraph Browser["Browser (Client)"]
