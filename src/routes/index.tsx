@@ -15,6 +15,7 @@ import {
 import { Callout } from '../components/Callout';
 
 export const Route = createFileRoute('/')({ component: Home });
+import { gardenUrl } from '../shared/garden';
 
 const features = [
   {
@@ -125,7 +126,7 @@ function Home() {
         </p>
         <div className="flex gap-4 mt-6">
           <a
-            href="https://developers.cloudflare.com/browser-run/"
+            href={gardenUrl('https://developers.cloudflare.com/browser-run/')}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-base btn-primary"
@@ -133,7 +134,9 @@ function Home() {
             Documentation
           </a>
           <a
-            href="https://developers.cloudflare.com/browser-run/quick-actions/"
+            href={gardenUrl(
+              'https://developers.cloudflare.com/browser-run/quick-actions/',
+            )}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-base btn-ghost"
@@ -186,9 +189,9 @@ function Home() {
       {/* Info */}
       <Callout>
         <strong className="text-cf-text">Getting started:</strong> Each demo
-        page lets you try one Browser Run Quick Action interactively. Enter a URL,
-        click Run, and see the result. Requests are proxied through the Worker,
-        which injects the API token server-side.
+        page lets you try one Browser Run Quick Action interactively. Enter a
+        URL, click Run, and see the result. Requests are proxied through the
+        Worker, which injects the API token server-side.
       </Callout>
     </div>
   );

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/screenshot</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/pdf</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/content</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/markdown</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/scrape</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/json</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/links</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/snapshot</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/accessibility</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/binding</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/crawl</loc></url>
+  <url><loc>https://cloudflare-browser-rendering-demo.dwarven.workers.dev/slides</loc></url>
+</urlset>

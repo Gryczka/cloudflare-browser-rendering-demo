@@ -11,16 +11,12 @@
  *   2. `enforceRateLimit` — the native Workers rate limiting binding, keyed on
  *      the client IP.
  *   3. `clampCrawlOptions` — hard server-side ceilings on the crawl parameters.
- *      This is the real spend control: the API accepts `limit` up to 100,000.
+ *      Deployment-wide reservations in BrowserBudget provide hard admission accounting.
  */
 
 import { getRequestHeader } from '@tanstack/react-start/server';
 import { env } from 'cloudflare:workers';
-import {
-  CRAWL_CEILINGS,
-  CRAWL_FORMATS,
-  CRAWL_SOURCES,
-} from '../shared/limits';
+import { CRAWL_CEILINGS, CRAWL_FORMATS, CRAWL_SOURCES } from '../shared/limits';
 
 // ─── Errors ──────────────────────────────────────────────────────────
 
@@ -84,35 +80,57 @@ export function assertPublicHttpUrl(raw: unknown, field = 'url'): string {
   }
 
   const candidate = raw.trim();
+  if (candidate.length > 2_048)
+    throw new InvalidInputError('URL exceeds demo limits.');
 
   let parsed: URL;
   try {
     parsed = new URL(candidate);
   } catch {
     throw new InvalidInputError(
-      `${field} is not a valid URL. Include the scheme, for example https://example.com`
+      `${field} is not a valid URL. Include the scheme, for example https://example.com`,
     );
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new InvalidInputError(
-      `${field} must use http:// or https:// (received ${parsed.protocol}).`
+      `${field} must use http:// or https:// (received ${parsed.protocol}).`,
     );
   }
 
   // URL normalises IPv6 hosts to bracketed form; strip for pattern matching.
-  const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const hostname = parsed.hostname
+    .replace(/^\[|\]$/g, '')
+    .toLowerCase()
+    .replace(/\.$/, '');
+  if (!hostname.includes('.') && !hostname.includes(':'))
+    throw new InvalidInputError('Non-public hostnames are not supported.');
+  if (
+    parsed.username ||
+    parsed.password ||
+    (parsed.port && !['80', '443'].includes(parsed.port))
+  )
+    throw new InvalidInputError(
+      'Credentials and nonstandard ports are not supported.',
+    );
+  if (
+    /^(?:100\.(?:6[4-9]|[78]\d|9\d|1[01]\d|12[0-7])\.|198\.(?:18|19)\.|(?:22[4-9]|23\d|24\d|25[0-5])\.)/.test(
+      hostname,
+    ) ||
+    (hostname.includes(':') && !/^[23][0-9a-f]{3}:/i.test(hostname))
+  )
+    throw new InvalidInputError('Non-public addresses are not supported.');
 
   if (BLOCKED_HOSTNAMES.has(hostname)) {
     throw new InvalidInputError(
-      `${field} points at a non-public host (${hostname}). This demo only renders public sites.`
+      `${field} points at a non-public host (${hostname}). This demo only renders public sites.`,
     );
   }
 
   for (const pattern of BLOCKED_HOST_PATTERNS) {
     if (pattern.test(hostname)) {
       throw new InvalidInputError(
-        `${field} points at a private or loopback address (${hostname}). This demo only renders public sites.`
+        `${field} points at a private or loopback address (${hostname}). This demo only renders public sites.`,
       );
     }
   }
@@ -122,13 +140,15 @@ export function assertPublicHttpUrl(raw: unknown, field = 'url'): string {
 
 /** Validate a batch of CSS selectors coming from the scrape form. */
 export function assertSelectors(
-  elements: unknown
+  elements: unknown,
 ): Array<{ selector: string }> {
   if (!Array.isArray(elements) || elements.length === 0) {
     throw new InvalidInputError('At least one CSS selector is required.');
   }
   if (elements.length > 20) {
-    throw new InvalidInputError('At most 20 selectors are allowed per request.');
+    throw new InvalidInputError(
+      'At most 20 selectors are allowed per request.',
+    );
   }
 
   return elements.map((element) => {
@@ -161,7 +181,9 @@ interface RateLimiter {
 
 function getLimiter(kind: RateLimitKind): RateLimiter | undefined {
   const bindings = env as unknown as Record<string, RateLimiter | undefined>;
-  return kind === 'crawl' ? bindings.CRAWL_LIMITER : bindings.QUICK_ACTION_LIMITER;
+  return kind === 'crawl'
+    ? bindings.CRAWL_LIMITER
+    : bindings.QUICK_ACTION_LIMITER;
 }
 
 /**
@@ -170,8 +192,7 @@ function getLimiter(kind: RateLimitKind): RateLimiter | undefined {
  * Cloudflare's own docs caution against IP keys because mobile networks and
  * privacy proxies share addresses. For an unauthenticated public demo there is
  * no better signal available, so we accept the collateral-damage tradeoff and
- * keep the limits generous. The hard ceilings in `clampCrawlOptions` are what
- * actually bound spend.
+ * keep the limits generous. Shared reservations bound admitted jobs and work.
  */
 function clientKey(): string {
   const ip =
@@ -193,9 +214,9 @@ function clientKey(): string {
 export async function enforceRateLimit(kind: RateLimitKind): Promise<void> {
   const limiter = getLimiter(kind);
 
-  // The binding is absent in unit tests and in older deployments. Treat a
-  // missing limiter as "not configured" rather than failing the request.
-  if (!limiter) return;
+  // Public actions fail closed on incomplete deployment configuration.
+  if (!limiter)
+    throw new Error('Required public demo rate limiter is unavailable.');
 
   const { success } = await limiter.limit({ key: `${kind}:${clientKey()}` });
 
@@ -203,7 +224,7 @@ export async function enforceRateLimit(kind: RateLimitKind): Promise<void> {
     throw new RateLimitError(
       kind === 'crawl'
         ? 'Crawl rate limit reached for this demo. Crawls are limited to protect the shared account quota — try again in a minute.'
-        : 'Rate limit reached for this demo. Try again in a few seconds.'
+        : 'Rate limit reached for this demo. Try again in a few seconds.',
     );
   }
 }
@@ -232,7 +253,7 @@ function clampInt(
   value: unknown,
   fallback: number,
   min: number,
-  max: number
+  max: number,
 ): number {
   const parsed =
     typeof value === 'number' && Number.isFinite(value)
@@ -255,27 +276,28 @@ function clampInt(
  *   and far less likely to be refused.
  */
 export function clampCrawlOptions(
-  input: CrawlOptionsInput
+  input: CrawlOptionsInput,
 ): Record<string, any> {
   const body: Record<string, any> = {
     limit: clampInt(
       input.limit,
       CRAWL_CEILINGS.defaultLimit,
       1,
-      CRAWL_CEILINGS.maxLimit
+      CRAWL_CEILINGS.maxLimit,
     ),
     depth: clampInt(
       input.depth,
       CRAWL_CEILINGS.defaultDepth,
       1,
-      CRAWL_CEILINGS.maxDepth
+      CRAWL_CEILINGS.maxDepth,
     ),
     render: input.render === true,
     crawlPurposes: ['search', 'ai-input'],
+    contentUse: 'reference',
   };
 
   const formats = (input.formats ?? []).filter((format) =>
-    ALLOWED_FORMATS.has(format)
+    ALLOWED_FORMATS.has(format),
   );
   body.formats = formats.length > 0 ? formats : ['markdown'];
 

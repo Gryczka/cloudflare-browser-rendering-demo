@@ -15,10 +15,10 @@
  * spending a shared account's quota, so the server clamps to these values.
  */
 export const CRAWL_CEILINGS = {
-  maxLimit: 100,
-  defaultLimit: 25,
-  maxDepth: 5,
-  defaultDepth: 2,
+  maxLimit: 10,
+  defaultLimit: 5,
+  maxDepth: 2,
+  defaultDepth: 1,
 } as const;
 
 /** Formats the `/crawl` endpoint accepts. */

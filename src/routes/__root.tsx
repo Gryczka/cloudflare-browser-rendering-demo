@@ -9,16 +9,26 @@ import { Presentation, Github } from 'lucide-react';
 
 import Sidebar from '../components/Sidebar';
 import appCss from '../styles.css?url';
+import { PUBLIC_ORIGIN } from '../shared/garden';
 
 export const Route = createRootRoute({
-  head: () => ({
+  head: ({ matches }) => ({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Cloudflare Browser Run Explorer' },
+      {
+        name: 'description',
+        content:
+          'Explore Browser Run screenshots, PDFs, structured extraction, accessibility, and bounded crawls. Browsing is stateless; paid actions require an explicit click and shared admission.',
+      },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
+      {
+        rel: 'canonical',
+        href: `${PUBLIC_ORIGIN}${matches.at(-1)?.pathname ?? '/'}`,
+      },
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       {
         rel: 'preconnect',
@@ -30,7 +40,12 @@ export const Route = createRootRoute({
         href: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
       },
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-      { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' },
+      {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: '/favicon-32.png',
+      },
       { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
     ],
   }),

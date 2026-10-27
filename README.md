@@ -20,14 +20,14 @@ An interactive playground for the [Cloudflare Browser Run](https://developers.cl
 
 This project is a hands-on walkthrough of [Cloudflare Browser Run](https://developers.cloudflare.com/browser-run/), structured as an interactive playground where you can try every Quick Action directly in your browser.
 
-| Concept | What You Learn |
-| --- | --- |
+| Concept                       | What You Learn                                                                                                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Browser Run Quick Actions** | How to use Cloudflare's headless Chrome service via simple HTTP calls — screenshots, PDFs, content extraction, AI-powered JSON extraction, and full-site crawling |
-| **Cloudflare Workers** | Serverless TypeScript running on Cloudflare's global edge network (300+ locations) |
-| **TanStack Start** | Full-stack React framework with server functions that run natively on Workers |
-| **Server Functions** | Type-safe RPC-style calls from the browser to the Worker backend — no manual API routes needed |
-| **The Proxy Pattern** | How a Worker authenticates with the Cloudflare API on behalf of the user, keeping secrets server-side |
-| **Vite + Cloudflare Plugin** | Modern dev experience with HMR, using `@cloudflare/vite-plugin` for seamless Worker development |
+| **Cloudflare Workers**        | Serverless TypeScript running on Cloudflare's global edge network (300+ locations)                                                                                |
+| **TanStack Start**            | Full-stack React framework with server functions that run natively on Workers                                                                                     |
+| **Server Functions**          | Type-safe RPC-style calls from the browser to the Worker backend — no manual API routes needed                                                                    |
+| **The Proxy Pattern**         | How a Worker authenticates with the Cloudflare API on behalf of the user, keeping secrets server-side                                                             |
+| **Vite + Cloudflare Plugin**  | Modern dev experience with HMR, using `@cloudflare/vite-plugin` for seamless Worker development                                                                   |
 
 Each demo page lets you enter a URL, click **Run**, and see the API response in real time — with the exact request body and timing visible in the UI.
 
@@ -82,7 +82,7 @@ graph TB
 4. Cloudflare spins up a headless Chrome instance, navigates to the target URL, and performs the requested action
 5. The result (screenshot bytes, PDF, HTML, Markdown, structured JSON, etc.) flows back through the Worker to the UI
 
-The Worker acts as a **thin proxy** — its only job is to inject the API token and forward the request. All secrets stay server-side.
+The Worker validates public inputs and obtains a shared reservation before proxying a paid action. All secrets stay server-side.
 
 ---
 
@@ -90,19 +90,19 @@ The Worker acts as a **thin proxy** — its only job is to inject the API token 
 
 The demo covers every Browser Run Quick Action available over REST:
 
-| Endpoint | Method | Description |
-| --- | --- | --- |
-| `/screenshot` | POST | Capture PNG, WebP, or JPEG screenshots with full-page and custom viewport support |
-| `/pdf` | POST | Generate PDF documents from URLs or raw HTML |
-| `/content` | POST | Fetch fully-rendered HTML after JavaScript execution |
-| `/markdown` | POST | Convert any webpage to clean Markdown (great for LLMs and RAG pipelines) |
-| `/scrape` | POST | Extract structured data from specific elements using CSS selectors |
-| `/json` | POST | AI-powered structured data extraction using a prompt or JSON schema |
-| `/links` | POST | Discover all links on a page — useful for site mapping and SEO analysis |
-| `/snapshot` | POST | Capture up to four representations in one render — screenshot, HTML, Markdown, accessibility tree |
-| `/accessibilityTree` | POST | Chrome's semantic tree: roles, names, values, hierarchy |
-| `/crawl` | POST | Start an asynchronous multi-page crawl with configurable depth and limits |
-| `/crawl/:jobId` | GET | Poll crawl job status and retrieve results |
+| Endpoint             | Method | Description                                                                                       |
+| -------------------- | ------ | ------------------------------------------------------------------------------------------------- |
+| `/screenshot`        | POST   | Capture PNG, WebP, or JPEG screenshots with full-page and custom viewport support                 |
+| `/pdf`               | POST   | Generate PDF documents from public URLs (raw HTML is disabled in this demo)                       |
+| `/content`           | POST   | Fetch fully-rendered HTML after JavaScript execution                                              |
+| `/markdown`          | POST   | Convert any webpage to clean Markdown (great for LLMs and RAG pipelines)                          |
+| `/scrape`            | POST   | Extract structured data from specific elements using CSS selectors                                |
+| `/json`              | POST   | AI-powered structured data extraction using a prompt or JSON schema                               |
+| `/links`             | POST   | Discover all links on a page — useful for site mapping and SEO analysis                           |
+| `/snapshot`          | POST   | Capture up to four representations in one render — screenshot, HTML, Markdown, accessibility tree |
+| `/accessibilityTree` | POST   | Chrome's semantic tree: roles, names, values, hierarchy                                           |
+| `/crawl`             | POST   | Start an asynchronous multi-page crawl with configurable depth and limits                         |
+| `/crawl/:jobId`      | GET    | Poll crawl job status and retrieve results                                                        |
 
 Every Quick Action available over REST is covered. Still to come: the
 [Browser Sessions](https://developers.cloudflare.com/browser-run/playwright/)
@@ -125,19 +125,25 @@ Two details worth knowing if you build against these:
 ## Demo Guardrails
 
 This is deployed publicly without authentication, so every button spends real
-Browser Run quota on the owner's account. Three layers keep that bounded — see
-[`src/server/guards.ts`](src/server/guards.ts):
+Browser Run quota on the owner's account. Guards and transactional reservations bound admitted work — see
+[`src/server/guards.ts`](src/server/guards.ts), [`src/server/action-guards.ts`](src/server/action-guards.ts), and [`src/server/browser-budget.ts`](src/server/browser-budget.ts):
 
-| Guard | Behaviour |
-| --- | --- |
-| **URL validation** | Rejects anything that is not a public `http(s)` URL. Loopback, RFC1918 private ranges, link-local (including the `169.254.169.254` metadata endpoint), and `.local`/`.internal` hosts are refused before any API call. |
-| **Rate limiting** | The native [Workers rate limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), keyed on client IP, with separate namespaces for Quick Actions (20/min) and crawl (3/min). Note these counters are per-Cloudflare-location and eventually consistent, so they bound bursts rather than global spend. |
-| **Crawl ceilings** | `limit` is capped at 100 pages and `depth` at 5, versus the API's own maxima of 100,000 each. This is the control that actually bounds cost. |
+| Guard                      | Behaviour                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **URL validation**         | Rejects anything that is not a public `http(s)` URL. Loopback, RFC1918 private ranges, link-local (including the `169.254.169.254` metadata endpoint), and `.local`/`.internal` hosts are refused before any API call.                                                                                                                        |
+| **Rate limiting**          | The native [Workers rate limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), keyed on client IP, with separate namespaces for Quick Actions (20/min) and crawl (3/min). Note these counters are per-Cloudflare-location and eventually consistent, so they bound bursts rather than global spend. |
+| **Crawl ceilings**         | Defaults: 5 pages, depth 1, `render: false`. Hard public ceilings: 10 pages and depth 2. Rendering is explicit paid opt-in.                                                                                                                                                                                                                   |
+| **Shared admission**       | One SQLite-backed `BROWSER_BUDGET` Durable Object admits at most 2 active actions, 30 action attempts/UTC day and 100 reserved work units/UTC day. All expensive REST and binding endpoints participate. Missing limiter, budget binding, or `PUBLIC_DEMO_BUDGET` configuration fails closed.                                                 |
+| **Input/output bounds**    | Streamed server-function bodies: 64 KiB/10 seconds; serialized provider options: 16 KiB; URL: 2048 characters; prompt: 2000 characters; schema: 4096 characters; viewport: 1440×900. Provider JSON is bounded to 10 MiB and binary output to 8 MiB.                                                                                           |
+| **Timeout/reconciliation** | 20-second request deadline, 15-second navigation timeout, five-minute crawl deadline. Crawl alarms request cancellation and release active capacity only after observing a provider terminal status. Uncertain outcomes retain capacity.                                                                                                      |
+
+`PUBLIC_DEMO_BUDGET` is an explicit JSON policy in `wrangler.jsonc`; the defaults are intentionally conservative and configurable. Quick Actions reserve one work unit, JSON extraction two, and crawls their clamped page limit (twice that with JSON). Binding-vs-REST comparisons reserve each execution separately. Jobs/work are never refunded on error or cancellation. These are demo admission units, **not dollar limits** or platform quotas.
+
+Migration `browser-budget-v1` creates `BrowserBudget`; limiter namespaces `1001` and `1002` remain separate. Existing pre-migration crawl IDs are rejected. Lost Quick Action responses or crawl-start responses cannot be reconciled automatically without an ID; they can exhaust shared capacity. Known crawl IDs continue reconciling until terminal confirmation, including after repeated cancellation failures. Healthy running observations reset the failure counter; failures use bounded one-to-five-minute backoff, with the next alarm capped at any future cancellation deadline. A configured fifteen-minute crawl is not abandoned after ten polls. Do not delete reservations merely because their deadline elapsed. URL checks cover syntax and literal non-public hosts; they are not DNS-rebinding or redirect validation.
 
 Two crawl defaults are deliberate:
 
-- **`render: false`** — non-rendered crawls run on Workers instead of a headless
-  browser, consume no browser time, and are unbilled during the beta.
+- **`render: false`** — non-rendered crawls avoid headless rendering; check current product pricing before enabling paid options.
 - **`crawlPurposes: ['search', 'ai-input']`** — the API default also includes
   `ai-train`, and any site whose [Content Signals](https://contentsignals.org/)
   set `ai-train=no` rejects the entire job with a `400`.
@@ -253,6 +259,18 @@ npm run test
 ```
 
 Tests cover all 10 server functions and key UI components using Vitest + Testing Library.
+
+For credential-isolated local validation (including mocked providers and real SQLite admission queries):
+
+```bash
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npm run cf-typegen
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npm run typecheck
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npm test
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npm run build
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npx --no-install wrangler deploy --dry-run --config dist/server/wrangler.json
+```
+
+This preload excludes credential files/tokens; it is not a network sandbox. Never use live binding calls as smoke tests: `BROWSER.remote` consumes real quota. Public SSR pages include descriptions and route canonicals; robots and sitemap include information pages and exclude server functions/results. Cloudflare resource anchors carry app-garden UTM attribution while API examples and execution URLs stay literal. Robots declare `Content-Signal: search=yes,ai-input=yes,ai-train=no`; crawler policy is not authorization. Previously uploaded Version URLs keep their original code until separately retired.
 
 ---
 

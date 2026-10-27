@@ -1,67 +1,74 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "cloudflare-browser-rendering-demo",
-	/**
-	 * 2026-03-24 or later is required by `env.BROWSER.quickAction()`.
-	 * Kept current so the browser binding can be added without a second bump.
-	 */
-	"compatibility_date": "2026-03-24",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"main": "@tanstack/react-start/server-entry",
-	"observability": {
-		"enabled": true
-	},
-	/**
-	 * Browser Run binding.
-	 *
-	 * `remote: true` is required for `env.BROWSER.quickAction()` in local dev —
-	 * the method is not implemented by the local runtime, and without it you get
-	 * `The RPC receiver does not implement the method "quickAction"`. It means
-	 * local dev consumes real browser time on the account.
-	 */
-	"browser": {
-		"binding": "BROWSER",
-		"remote": true
-	},
-	/**
-	 * Rate limiting for a public, unauthenticated demo.
-	 *
-	 * Two namespaces so an expensive crawl cannot consume the budget for
-	 * cheap Quick Actions. `period` only accepts 10 or 60.
-	 *
-	 * Caveat: these counters are per Cloudflare location and are eventually
-	 * consistent, so they bound burst abuse rather than global spend. The hard
-	 * ceilings in src/server/guards.ts are what actually cap cost.
-	 */
-	"ratelimits": [
-		{
-			"name": "QUICK_ACTION_LIMITER",
-			"namespace_id": "1001",
-			"simple": {
-				"limit": 20,
-				"period": 60
-			}
-		},
-		{
-			"name": "CRAWL_LIMITER",
-			"namespace_id": "1002",
-			"simple": {
-				"limit": 3,
-				"period": 60
-			}
-		}
-	]
-	/**
-	 * Environment Variables
-	 *
-	 * For local development, create a `.dev.vars` file (see .dev.vars.example):
-	 *   CF_ACCOUNT_ID=your_account_id
-	 *   CF_API_TOKEN=your_api_token
-	 *
-	 * For production, set secrets via Wrangler:
-	 *   npx wrangler secret put CF_ACCOUNT_ID
-	 *   npx wrangler secret put CF_API_TOKEN
-	 */
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-browser-rendering-demo",
+  /**
+   * 2026-03-24 or later is required by `env.BROWSER.quickAction()`.
+   * Kept current so the browser binding can be added without a second bump.
+   */
+  "compatibility_date": "2026-03-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/worker.ts",
+  "vars": {
+    "PUBLIC_DEMO_BUDGET": "{\"maxActive\":2,\"jobsPerDay\":30,\"workPerDay\":100,\"requestTimeoutMs\":20000,\"crawlTimeoutMs\":300000}",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "BROWSER_BUDGET", "class_name": "BrowserBudget" }],
+  },
+  "migrations": [
+    { "tag": "browser-budget-v1", "new_sqlite_classes": ["BrowserBudget"] },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+  /**
+   * Browser Run binding.
+   *
+   * `remote: true` is required for `env.BROWSER.quickAction()` in local dev —
+   * the method is not implemented by the local runtime, and without it you get
+   * `The RPC receiver does not implement the method "quickAction"`. It means
+   * local dev consumes real browser time on the account.
+   */
+  "browser": {
+    "binding": "BROWSER",
+    "remote": true,
+  },
+  /**
+   * Rate limiting for a public, unauthenticated demo.
+   *
+   * Two namespaces so an expensive crawl cannot consume the budget for
+   * cheap Quick Actions. `period` only accepts 10 or 60.
+   *
+   * Caveat: these counters are per Cloudflare location and are eventually
+   * consistent, so they bound burst abuse rather than global spend. The hard
+   * ceilings in src/server/guards.ts are what actually cap cost.
+   */
+  "ratelimits": [
+    {
+      "name": "QUICK_ACTION_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 20,
+        "period": 60,
+      },
+    },
+    {
+      "name": "CRAWL_LIMITER",
+      "namespace_id": "1002",
+      "simple": {
+        "limit": 3,
+        "period": 60,
+      },
+    },
+  ],
+  /**
+   * Environment Variables
+   *
+   * For local development, create a `.dev.vars` file (see .dev.vars.example):
+   *   CF_ACCOUNT_ID=your_account_id
+   *   CF_API_TOKEN=your_api_token
+   *
+   * For production, set secrets via Wrangler:
+   *   npx wrangler secret put CF_ACCOUNT_ID
+   *   npx wrangler secret put CF_API_TOKEN
+   */
 }

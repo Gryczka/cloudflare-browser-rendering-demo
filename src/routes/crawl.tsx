@@ -28,7 +28,7 @@ const startResp = await fetch(
       limit: 10,
       depth: 2,
       formats: ['markdown', 'html', 'json'],
-      render: true,
+      render: false,
       // jsonOptions is required when formats includes 'json'
       jsonOptions: { prompt: 'Extract the title and summary' },
     }),
@@ -57,14 +57,16 @@ const presets = [
 
 function CrawlDemo() {
   const [url, setUrl] = useState('');
-  const [limit, setLimit] = useState(10);
-  const [depth, setDepth] = useState(2);
+  const [limit, setLimit] = useState<number>(CRAWL_CEILINGS.defaultLimit);
+  const [depth, setDepth] = useState<number>(CRAWL_CEILINGS.defaultDepth);
   const [formats, setFormats] = useState<string[]>(['markdown', 'html']);
-  const [render, setRender] = useState(true);
+  const [render, setRender] = useState(false);
   const [source, setSource] = useState('all');
   const [includePatterns, setIncludePatterns] = useState('');
   const [excludePatterns, setExcludePatterns] = useState('');
-  const [jsonPrompt, setJsonPrompt] = useState('Extract the main heading, description, and a list of links');
+  const [jsonPrompt, setJsonPrompt] = useState(
+    'Extract the main heading, description, and a list of links',
+  );
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -87,7 +89,7 @@ function CrawlDemo() {
 
   const handleFormatToggle = (fmt: string) => {
     setFormats((prev) =>
-      prev.includes(fmt) ? prev.filter((f) => f !== fmt) : [...prev, fmt]
+      prev.includes(fmt) ? prev.filter((f) => f !== fmt) : [...prev, fmt],
     );
   };
 
@@ -128,7 +130,7 @@ function CrawlDemo() {
         stopPolling();
       }
     },
-    [stopPolling]
+    [stopPolling],
   );
 
   // Without this, navigating away mid-crawl leaves the recursive setTimeout
@@ -173,7 +175,11 @@ function CrawlDemo() {
           .filter(Boolean);
       }
 
-      const { jobId: id, browserMs: ms, appliedOptions } = await startCrawl({
+      const {
+        jobId: id,
+        browserMs: ms,
+        appliedOptions,
+      } = await startCrawl({
         data: {
           url,
           limit,
@@ -181,7 +187,9 @@ function CrawlDemo() {
           formats,
           render,
           source,
-          jsonOptions: formats.includes('json') ? { prompt: jsonPrompt } : undefined,
+          jsonOptions: formats.includes('json')
+            ? { prompt: jsonPrompt }
+            : undefined,
           options: Object.keys(options).length > 0 ? options : undefined,
         },
       });
@@ -310,7 +318,7 @@ function CrawlDemo() {
             </div>
             <div>
               <label className="block text-xs font-medium text-cf-text-muted mb-1">
-                Render JS
+                Render JS (paid browser work — explicit opt-in)
               </label>
               <select
                 value={render ? 'true' : 'false'}
@@ -360,7 +368,8 @@ function CrawlDemo() {
                 className="w-full px-3 py-2 rounded-lg border border-cf-border bg-white text-sm focus:outline-none focus:border-cf-orange focus:ring-1 focus:ring-cf-orange/20"
               />
               <p className="text-[10px] text-cf-text-muted mt-1">
-                Required when JSON format is selected. Uses Workers AI to extract structured data from each crawled page.
+                Required when JSON format is selected. Uses Workers AI to
+                extract structured data from each crawled page.
               </p>
             </div>
           )}
@@ -445,10 +454,7 @@ function CrawlDemo() {
             {/* Job Status Bar (shown during polling) */}
             {polling && (
               <div className="flex flex-wrap items-center gap-3 pb-3 border-b border-cf-border">
-                <StatusBadge
-                  status="loading"
-                  label={status || 'starting'}
-                />
+                <StatusBadge status="loading" label={status || 'starting'} />
                 <span className="text-xs font-mono text-cf-text-muted">
                   Job: {jobId}
                 </span>
@@ -456,7 +462,10 @@ function CrawlDemo() {
                   <span className="w-1.5 h-1.5 bg-cf-orange rounded-full pulse-dot" />
                   <span className="pulse-dot-delay-1 w-1.5 h-1.5 bg-cf-orange rounded-full pulse-dot" />
                   <span className="pulse-dot-delay-2 w-1.5 h-1.5 bg-cf-orange rounded-full pulse-dot" />
-                  <span className="ml-1">Crawling... {jobMeta?.finished ?? 0}/{jobMeta?.total ?? '?'} pages</span>
+                  <span className="ml-1">
+                    Crawling... {jobMeta?.finished ?? 0}/{jobMeta?.total ?? '?'}{' '}
+                    pages
+                  </span>
                 </span>
               </div>
             )}

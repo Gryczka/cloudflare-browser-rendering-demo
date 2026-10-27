@@ -29,6 +29,7 @@ import {
   env,
   rateLimiters,
   resetWorkersEnv,
+  reservations,
 } from '../mocks/cloudflare-workers';
 
 const api = await import('../../server/browser-rendering');
@@ -39,7 +40,7 @@ const BASE =
 /** Build a mock Response for a JSON Quick Action, wrapped in the API envelope. */
 function jsonResponse(
   result: unknown,
-  { browserMs, meta }: { browserMs?: string; meta?: unknown } = {}
+  { browserMs, meta }: { browserMs?: string; meta?: unknown } = {},
 ) {
   const headers = new Map<string, string>();
   if (browserMs) headers.set('x-browser-ms-used', browserMs);
@@ -88,7 +89,7 @@ describe('Browser Run server functions', () => {
   describe('envelope unwrapping', () => {
     it('fetchContent returns the HTML string, not the envelope', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse('<html><body>Hello</body></html>', { browserMs: '800' })
+        jsonResponse('<html><body>Hello</body></html>', { browserMs: '800' }),
       );
 
       const result = await api.fetchContent({
@@ -116,7 +117,7 @@ describe('Browser Run server functions', () => {
 
     it('fetchLinks returns a flat array of URL strings', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse(['https://a.example/', 'https://b.example/x'])
+        jsonResponse(['https://a.example/', 'https://b.example/x']),
       );
 
       const result = await api.fetchLinks({
@@ -134,7 +135,7 @@ describe('Browser Run server functions', () => {
         jsonResponse({
           screenshot: 'iVBORw0KGgo=',
           content: '<html><body>Snap</body></html>',
-        })
+        }),
       );
 
       const result = await api.takeSnapshot({
@@ -160,7 +161,7 @@ describe('Browser Run server functions', () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse([
           { selector: 'h1', results: [{ text: 'Example Domain' }] },
-        ])
+        ]),
       );
 
       const result = await api.scrapeContent({
@@ -196,7 +197,7 @@ describe('Browser Run server functions', () => {
       });
 
       await expect(
-        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any)
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
       ).rejects.toThrow('Markdown fetch failed: Navigation timed out');
     });
   });
@@ -212,7 +213,7 @@ describe('Browser Run server functions', () => {
             name: 'Example Domain',
             children: [{ role: 'heading', name: 'Example Domain', level: 1 }],
           },
-        })
+        }),
       );
 
       const result = await api.fetchAccessibilityTree({
@@ -223,17 +224,23 @@ describe('Browser Run server functions', () => {
       // spec and every sibling endpoint use /browser-rendering/.
       expect(mockFetch).toHaveBeenCalledWith(
         `${BASE}/accessibilityTree`,
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ method: 'POST' }),
       );
       expect(result.tree?.role).toBe('RootWebArea');
       expect(result.tree?.children?.[0].level).toBe(1);
     });
 
     it('forwards interestingOnly and root', async () => {
-      mockFetch.mockResolvedValueOnce(jsonResponse({ accessibilityTree: null }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ accessibilityTree: null }),
+      );
 
       await api.fetchAccessibilityTree({
-        data: { url: 'https://example.com', interestingOnly: false, root: 'main' },
+        data: {
+          url: 'https://example.com',
+          interestingOnly: false,
+          root: 'main',
+        },
       } as any);
 
       const body = bodyOf(mockFetch.mock.calls[0]);
@@ -243,7 +250,9 @@ describe('Browser Run server functions', () => {
 
     it('returns null when a root selector matches nothing', async () => {
       // The API answers 200 with a null tree rather than erroring.
-      mockFetch.mockResolvedValueOnce(jsonResponse({ accessibilityTree: null }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ accessibilityTree: null }),
+      );
 
       const result = await api.fetchAccessibilityTree({
         data: { url: 'https://example.com', root: '.nope' },
@@ -271,7 +280,7 @@ describe('Browser Run server functions', () => {
       await expect(
         api.takeSnapshot({
           data: { url: 'https://example.com', formats: ['markdown'] },
-        } as any)
+        } as any),
       ).rejects.toThrow('needs at least two formats');
       expect(mockFetch).not.toHaveBeenCalled();
     });
@@ -297,7 +306,7 @@ describe('Browser Run server functions', () => {
         jsonResponse({
           markdown: '# Example Domain',
           accessibilityTree: { role: 'RootWebArea', name: 'Example Domain' },
-        })
+        }),
       );
 
       const result = await api.takeSnapshot({
@@ -349,9 +358,12 @@ describe('Browser Run server functions', () => {
         api.extractJson({
           data: {
             url: 'https://example.com',
-            response_format: { type: 'json_schema', json_schema: { type: 'object' } },
+            response_format: {
+              type: 'json_schema',
+              json_schema: { type: 'object' },
+            },
           },
-        } as any)
+        } as any),
       ).resolves.toBeDefined();
     });
   });
@@ -361,7 +373,7 @@ describe('Browser Run server functions', () => {
   describe('binary endpoints', () => {
     it('takeScreenshot returns a data URL and byte count', async () => {
       mockFetch.mockResolvedValueOnce(
-        binaryResponse(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+        binaryResponse(new Uint8Array([0x89, 0x50, 0x4e, 0x47])),
       );
 
       const result = await api.takeScreenshot({
@@ -370,7 +382,7 @@ describe('Browser Run server functions', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         `${BASE}/screenshot`,
-        expect.objectContaining({ method: 'POST' })
+        expect.objectContaining({ method: 'POST' }),
       );
       expect(result.image).toMatch(/^data:image\/png;base64,/);
       expect(result.bytes).toBe(4);
@@ -399,7 +411,7 @@ describe('Browser Run server functions', () => {
 
     it('generatePdf forwards pdfOptions', async () => {
       mockFetch.mockResolvedValueOnce(
-        binaryResponse(new Uint8Array(8), 'application/pdf')
+        binaryResponse(new Uint8Array(8), 'application/pdf'),
       );
 
       const result = await api.generatePdf({
@@ -412,18 +424,13 @@ describe('Browser Run server functions', () => {
       expect(result.pdf).toMatch(/^data:application\/pdf;base64,/);
     });
 
-    it('prefers html over url when both are supplied', async () => {
-      mockFetch.mockResolvedValueOnce(
-        binaryResponse(new Uint8Array(4), 'application/pdf')
-      );
-
-      await api.generatePdf({
-        data: { html: '<h1>Invoice</h1>', url: 'https://example.com' },
-      } as any);
-
-      const body = bodyOf(mockFetch.mock.calls[0]);
-      expect(body.html).toBe('<h1>Invoice</h1>');
-      expect(body.url).toBeUndefined();
+    it('rejects raw HTML before provider dispatch', async () => {
+      await expect(
+        api.generatePdf({
+          data: { html: '<h1>Invoice</h1>', url: 'https://example.com' },
+        } as any),
+      ).rejects.toThrow('Raw HTML');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -432,7 +439,7 @@ describe('Browser Run server functions', () => {
   describe('browserMs', () => {
     it('rounds the float from the header to whole milliseconds', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse('ok', { browserMs: '386.769775390625' })
+        jsonResponse('ok', { browserMs: '386.769775390625' }),
       );
 
       const result = await api.fetchMarkdown({
@@ -454,7 +461,7 @@ describe('Browser Run server functions', () => {
 
     it('is null when the header is not a number', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse('ok', { browserMs: 'not-a-number' })
+        jsonResponse('ok', { browserMs: 'not-a-number' }),
       );
 
       const result = await api.fetchMarkdown({
@@ -486,7 +493,7 @@ describe('Browser Run server functions', () => {
     for (const [label, url] of rejected) {
       it(`rejects ${label} without calling the API`, async () => {
         await expect(
-          api.fetchContent({ data: { url } } as any)
+          api.fetchContent({ data: { url } } as any),
         ).rejects.toThrow();
         expect(mockFetch).not.toHaveBeenCalled();
       });
@@ -500,7 +507,7 @@ describe('Browser Run server functions', () => {
       } as any);
 
       expect(bodyOf(mockFetch.mock.calls[0]).url).toBe(
-        'https://example.com/page?q=1'
+        'https://example.com/page?q=1',
       );
     });
 
@@ -508,13 +515,13 @@ describe('Browser Run server functions', () => {
       await expect(
         api.scrapeContent({
           data: { url: 'https://example.com', elements: [] },
-        } as any)
+        } as any),
       ).rejects.toThrow('At least one CSS selector is required.');
     });
 
     it('requires a prompt or a schema for JSON extraction', async () => {
       await expect(
-        api.extractJson({ data: { url: 'https://example.com' } } as any)
+        api.extractJson({ data: { url: 'https://example.com' } } as any),
       ).rejects.toThrow('needs either a prompt or a response_format schema');
     });
   });
@@ -530,8 +537,8 @@ describe('Browser Run server functions', () => {
       } as any);
 
       const body = bodyOf(mockFetch.mock.calls[0]);
-      expect(body.limit).toBe(100);
-      expect(body.depth).toBe(5);
+      expect(body.limit).toBe(10);
+      expect(body.depth).toBe(2);
     });
 
     it('defaults render to false so no browser time is consumed', async () => {
@@ -584,13 +591,21 @@ describe('Browser Run server functions', () => {
         data: { url: 'https://example.com', limit: 9999 },
       } as any);
 
-      expect(result.appliedOptions.limit).toBe(100);
+      expect(result.appliedOptions.limit).toBe(10);
     });
   });
 
   // ─── Crawl status ─────────────────────────────────────────────────
 
   describe('getCrawlStatus', () => {
+    beforeEach(() =>
+      reservations.set('known', {
+        kind: 'crawl',
+        work: 5,
+        complete: false,
+        jobId: 'job-1',
+      }),
+    );
     it('unwraps the job and encodes the job id', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse({
@@ -608,7 +623,7 @@ describe('Browser Run server functions', () => {
               metadata: { url: 'https://example.com/', status: 200 },
             },
           ],
-        })
+        }),
       );
 
       const result = await api.getCrawlStatus({
@@ -622,7 +637,7 @@ describe('Browser Run server functions', () => {
 
     it('rejects a malformed job id without calling the API', async () => {
       await expect(
-        api.getCrawlStatus({ data: { jobId: '../../admin' } } as any)
+        api.getCrawlStatus({ data: { jobId: '../../admin' } } as any),
       ).rejects.toThrow('Invalid crawl job id.');
       expect(mockFetch).not.toHaveBeenCalled();
     });
@@ -651,6 +666,59 @@ describe('Browser Run server functions', () => {
   // ─── Rate limiting ────────────────────────────────────────────────
 
   describe('rate limiting', () => {
+    it('retains capacity when a successful HTTP response lacks a valid provider envelope', async () => {
+      mockFetch.mockResolvedValueOnce(
+        Response.json({ unexpected: 'response' }),
+      );
+      await expect(
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
+      ).rejects.toThrow('invalid envelope');
+      expect([...reservations.values()].every((item) => !item.complete)).toBe(
+        true,
+      );
+    });
+    it.each(['QUICK_ACTION_LIMITER', 'PUBLIC_DEMO_BUDGET', 'BROWSER_BUDGET'])(
+      'fails closed without %s',
+      async (key) => {
+        delete env[key];
+        await expect(
+          api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
+        ).rejects.toThrow();
+        expect(mockFetch).not.toHaveBeenCalled();
+      },
+    );
+
+    it('retains ambiguous provider failures and blocks further paid work at shared capacity', async () => {
+      mockFetch.mockRejectedValue(new Error('Lost provider response'));
+      for (let i = 0; i < 2; i++)
+        await expect(
+          api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
+        ).rejects.toThrow('Lost provider response');
+      await expect(
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
+      ).rejects.toThrow('Shared public demo allowance');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect([...reservations.values()].every((item) => !item.complete)).toBe(
+        true,
+      );
+    });
+
+    it('rejects unknown crawl IDs before provider reads', async () => {
+      await expect(
+        api.getCrawlStatus({ data: { jobId: 'unknown-job' } } as any),
+      ).rejects.toThrow('Unknown demo crawl');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('bounds prompts and raw action options before paid dispatch', async () => {
+      await expect(
+        api.extractJson({
+          data: { url: 'https://example.com', prompt: 'x'.repeat(2001) },
+        } as any),
+      ).rejects.toThrow('Prompt exceeds');
+      expect(reservations.size).toBe(0);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
     it('charges the quick action limiter, keyed on client IP', async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse('ok'));
 
@@ -666,9 +734,7 @@ describe('Browser Run server functions', () => {
 
       await api.startCrawl({ data: { url: 'https://example.com' } } as any);
 
-      expect(rateLimiters.crawl.calls).toEqual([
-        { key: 'crawl:203.0.113.10' },
-      ]);
+      expect(rateLimiters.crawl.calls).toEqual([{ key: 'crawl:203.0.113.10' }]);
       expect(rateLimiters.quickAction.calls).toHaveLength(0);
     });
 
@@ -676,7 +742,7 @@ describe('Browser Run server functions', () => {
       rateLimiters.quickAction.allow = false;
 
       await expect(
-        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any)
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
       ).rejects.toThrow('Rate limit reached');
       expect(mockFetch).not.toHaveBeenCalled();
     });
@@ -685,7 +751,7 @@ describe('Browser Run server functions', () => {
       rateLimiters.crawl.allow = false;
 
       await expect(
-        api.startCrawl({ data: { url: 'https://example.com' } } as any)
+        api.startCrawl({ data: { url: 'https://example.com' } } as any),
       ).rejects.toThrow('Crawl rate limit reached');
     });
   });
@@ -703,12 +769,12 @@ describe('Browser Run server functions', () => {
             JSON.stringify({
               success: false,
               errors: [{ message: 'Could not convert HTML', code: 2012 }],
-            })
+            }),
           ),
       });
 
       await expect(
-        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any)
+        api.fetchMarkdown({ data: { url: 'https://example.com' } } as any),
       ).rejects.toThrow('Markdown fetch failed (422): Could not convert HTML');
     });
 
@@ -721,7 +787,7 @@ describe('Browser Run server functions', () => {
       });
 
       await expect(
-        api.fetchContent({ data: { url: 'https://example.com' } } as any)
+        api.fetchContent({ data: { url: 'https://example.com' } } as any),
       ).rejects.toThrow('Content fetch failed (502): Bad Gateway');
     });
 
@@ -734,7 +800,7 @@ describe('Browser Run server functions', () => {
         .fetchContent({ data: { url: 'https://example.com' } } as any)
         .then(
           () => null,
-          (e: Error) => e
+          (e: Error) => e,
         );
 
       expect(error?.message).toMatch(/Server misconfigured: CF_API_TOKEN/);

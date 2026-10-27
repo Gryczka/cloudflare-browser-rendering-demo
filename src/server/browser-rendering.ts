@@ -23,6 +23,42 @@ import {
   enforceRateLimit,
   type CrawlOptionsInput,
 } from './guards';
+import { checkedAction } from './action-guards';
+import {
+  budgetPolicy,
+  deadline,
+  providerJson,
+  responseBytes,
+} from './budget-policy';
+
+class ProviderTerminalError extends Error {}
+
+function requiredBudget() {
+  const bindings = env as Env;
+  budgetPolicy(bindings.PUBLIC_DEMO_BUDGET);
+  if (!bindings.BROWSER_BUDGET)
+    throw new Error('Required public demo budget is unavailable');
+  return bindings.BROWSER_BUDGET.getByName('public-demo');
+}
+
+async function admitted<T>(
+  kind: 'quick' | 'crawl' | 'binding',
+  work: number,
+  run: (id: string) => Promise<T>,
+): Promise<T> {
+  const budget = requiredBudget();
+  const id = await budget.reserve(kind, work);
+  try {
+    return await deadline(
+      run(id),
+      budgetPolicy((env as Env).PUBLIC_DEMO_BUDGET).requestTimeoutMs,
+    );
+  } catch (error) {
+    if (error instanceof ProviderTerminalError) await budget.complete(id);
+    // Aborts, lost responses and unreadable payloads do NOT free provider capacity.
+    throw error;
+  }
+}
 
 // ─── Configuration ───────────────────────────────────────────────────
 
@@ -35,7 +71,7 @@ function getEnvVar(name: 'CF_ACCOUNT_ID' | 'CF_API_TOKEN'): string {
     // names to anonymous visitors is needless disclosure.
     throw new Error(
       `Server misconfigured: ${name} is not set. ` +
-        `Set it locally in .dev.vars, or in production with \`wrangler secret put ${name}\`.`
+        `Set it locally in .dev.vars, or in production with \`wrangler secret put ${name}\`.`,
     );
   }
 
@@ -44,7 +80,7 @@ function getEnvVar(name: 'CF_ACCOUNT_ID' | 'CF_API_TOKEN'): string {
 
 function getBaseUrl(): string {
   return `https://api.cloudflare.com/client/v4/accounts/${getEnvVar(
-    'CF_ACCOUNT_ID'
+    'CF_ACCOUNT_ID',
   )}/browser-rendering`;
 }
 
@@ -89,21 +125,35 @@ function readBrowserMs(response: Response): number | null {
 
 /** Turn a non-2xx Browser Run response into a readable Error. */
 async function toApiError(response: Response, label: string): Promise<Error> {
-  const body = await response.text();
+  const body = response.body
+    ? new TextDecoder().decode(await responseBytes(response, 16_384))
+    : await response.text();
 
   // Prefer the structured error message when the API gives us one.
   try {
     const parsed = JSON.parse(body) as Envelope<unknown>;
     const message = parsed.errors?.map((error) => error.message).join('; ');
     if (message) {
-      return new Error(`${label} failed (${response.status}): ${message}`);
+      const ErrorType =
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 408
+          ? ProviderTerminalError
+          : Error;
+      return new ErrorType(
+        `${label} failed (${response.status}): ${message.slice(0, 500)}`,
+      );
     }
   } catch {
     // Not JSON — fall through to the raw body.
   }
 
-  return new Error(
-    `${label} failed (${response.status}): ${body.slice(0, 500)}`
+  const ErrorType =
+    response.status >= 400 && response.status < 500 && response.status !== 408
+      ? ProviderTerminalError
+      : Error;
+  return new ErrorType(
+    `${label} failed (${response.status}): ${body.slice(0, 500)}`,
   );
 }
 
@@ -113,30 +163,53 @@ async function toApiError(response: Response, label: string): Promise<Error> {
 async function callQuickAction<T>(
   path: string,
   body: Record<string, unknown>,
-  label: string
+  label: string,
 ): Promise<QuickActionResult<T>> {
-  const response = await fetch(`${getBaseUrl()}${path}`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(body),
+  body = checkedAction(path, body);
+  const url = `${getBaseUrl()}${path}`;
+  const headers = getHeaders();
+  const work =
+    path === '/crawl'
+      ? Number(body.limit) *
+        ((body.formats as string[])?.includes('json') ? 2 : 1)
+      : path === '/json'
+        ? 2
+        : 1;
+  return admitted(path === '/crawl' ? 'crawl' : 'quick', work, async (id) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(
+        budgetPolicy((env as Env).PUBLIC_DEMO_BUDGET).requestTimeoutMs,
+      ),
+    });
+
+    if (!response.ok) throw await toApiError(response, label);
+
+    const envelope = await providerJson<Envelope<T>>(response);
+
+    if (envelope.success !== true) {
+      if (envelope.success !== false)
+        throw new Error(
+          'Provider returned an invalid envelope; capacity remains reserved',
+        );
+      const message =
+        envelope.errors?.map((error) => error.message).join('; ') ??
+        'unknown error';
+      throw new ProviderTerminalError(`${label} failed: ${message}`);
+    }
+
+    if (path === '/crawl')
+      await requiredBudget().attach(id, envelope.result as string);
+    else await requiredBudget().complete(id);
+
+    return {
+      result: envelope.result,
+      browserMs: readBrowserMs(response),
+      meta: envelope.meta,
+    };
   });
-
-  if (!response.ok) throw await toApiError(response, label);
-
-  const envelope = (await response.json()) as Envelope<T>;
-
-  if (envelope.success === false) {
-    const message =
-      envelope.errors?.map((error) => error.message).join('; ') ??
-      'unknown error';
-    throw new Error(`${label} failed: ${message}`);
-  }
-
-  return {
-    result: envelope.result,
-    browserMs: readBrowserMs(response),
-    meta: envelope.meta,
-  };
 }
 
 /**
@@ -150,32 +223,40 @@ async function callBinaryAction(
   path: string,
   body: Record<string, unknown>,
   label: string,
-  fallbackMime: string
+  fallbackMime: string,
 ): Promise<{ dataUrl: string; bytes: number; browserMs: number | null }> {
-  const response = await fetch(`${getBaseUrl()}${path}`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(body),
+  body = checkedAction(path, body);
+  const url = `${getBaseUrl()}${path}`;
+  const headers = getHeaders();
+  return admitted('quick', 1, async (id) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(
+        budgetPolicy((env as Env).PUBLIC_DEMO_BUDGET).requestTimeoutMs,
+      ),
+    });
+
+    if (!response.ok) throw await toApiError(response, label);
+
+    const bytes = await responseBytes(response, 8 * 1024 * 1024);
+
+    const CHUNK = 8192;
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
+    }
+
+    const mime = response.headers.get('content-type') || fallbackMime;
+    await requiredBudget().complete(id);
+
+    return {
+      dataUrl: `data:${mime};base64,${btoa(binary)}`,
+      bytes: bytes.length,
+      browserMs: readBrowserMs(response),
+    };
   });
-
-  if (!response.ok) throw await toApiError(response, label);
-
-  const buffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  const CHUNK = 8192;
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
-  }
-
-  const mime = response.headers.get('content-type') || fallbackMime;
-
-  return {
-    dataUrl: `data:${mime};base64,${btoa(binary)}`,
-    bytes: bytes.length,
-    browserMs: readBrowserMs(response),
-  };
 }
 
 // ─── Screenshot ──────────────────────────────────────────────────────
@@ -191,7 +272,7 @@ export const takeScreenshot = createServerFn({ method: 'POST' })
         omitBackground?: boolean;
       };
       viewport?: { width?: number; height?: number };
-    }) => data
+    }) => data,
   )
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
@@ -209,7 +290,7 @@ export const takeScreenshot = createServerFn({ method: 'POST' })
       '/screenshot',
       body,
       'Screenshot',
-      'image/png'
+      'image/png',
     );
 
     return { image: dataUrl, bytes, browserMs };
@@ -227,7 +308,7 @@ export const generatePdf = createServerFn({ method: 'POST' })
         landscape?: boolean;
         printBackground?: boolean;
       };
-    }) => data
+    }) => data,
   )
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
@@ -244,7 +325,7 @@ export const generatePdf = createServerFn({ method: 'POST' })
       '/pdf',
       body,
       'PDF generation',
-      'application/pdf'
+      'application/pdf',
     );
 
     return { pdf: dataUrl, bytes, browserMs };
@@ -260,7 +341,7 @@ export const fetchContent = createServerFn({ method: 'POST' })
     const { result, browserMs, meta } = await callQuickAction<string>(
       '/content',
       { url: assertPublicHttpUrl(data.url) },
-      'Content fetch'
+      'Content fetch',
     );
 
     return { html: result, browserMs, meta };
@@ -276,7 +357,7 @@ export const fetchMarkdown = createServerFn({ method: 'POST' })
     const { result, browserMs, meta } = await callQuickAction<string>(
       '/markdown',
       { url: assertPublicHttpUrl(data.url) },
-      'Markdown fetch'
+      'Markdown fetch',
     );
 
     return { markdown: result, browserMs, meta };
@@ -303,7 +384,7 @@ export interface ScrapeGroup {
 
 export const scrapeContent = createServerFn({ method: 'POST' })
   .inputValidator(
-    (data: { url: string; elements: Array<{ selector: string }> }) => data
+    (data: { url: string; elements: Array<{ selector: string }> }) => data,
   )
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
@@ -314,7 +395,7 @@ export const scrapeContent = createServerFn({ method: 'POST' })
         url: assertPublicHttpUrl(data.url),
         elements: assertSelectors(data.elements),
       },
-      'Scrape'
+      'Scrape',
     );
   });
 
@@ -334,7 +415,7 @@ export const extractJson = createServerFn({ method: 'POST' })
         type: string;
         json_schema: Record<string, any>;
       };
-    }) => data
+    }) => data,
   )
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
@@ -347,23 +428,21 @@ export const extractJson = createServerFn({ method: 'POST' })
 
     if (!data.prompt && !data.response_format) {
       throw new Error(
-        'JSON extraction needs either a prompt or a response_format schema.'
+        'JSON extraction needs either a prompt or a response_format schema.',
       );
     }
 
     return callQuickAction<Record<string, any>>(
       '/json',
       body,
-      'JSON extraction'
+      'JSON extraction',
     );
   });
 
 // ─── Links ───────────────────────────────────────────────────────────
 
 export const fetchLinks = createServerFn({ method: 'POST' })
-  .inputValidator(
-    (data: { url: string; visibleLinksOnly?: boolean }) => data
-  )
+  .inputValidator((data: { url: string; visibleLinksOnly?: boolean }) => data)
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
 
@@ -403,7 +482,7 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
       url: string;
       formats?: Array<string>;
       screenshotOptions?: { type?: 'png' | 'webp' | 'jpeg' };
-    }) => data
+    }) => data,
   )
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
@@ -412,8 +491,9 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
       url: assertPublicHttpUrl(data.url),
     };
 
-    const requested = (data.formats ?? []).filter((format): format is SnapshotFormat =>
-      (SNAPSHOT_FORMATS as ReadonlyArray<string>).includes(format)
+    const requested = (data.formats ?? []).filter(
+      (format): format is SnapshotFormat =>
+        (SNAPSHOT_FORMATS as ReadonlyArray<string>).includes(format),
     );
 
     // The API rejects a single-format request outright: "This format must be
@@ -421,7 +501,7 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
     // format request." Fail here with a clearer message rather than round-trip.
     if (requested.length === 1) {
       throw new Error(
-        `/snapshot needs at least two formats. For just "${requested[0]}", use the dedicated endpoint instead.`
+        `/snapshot needs at least two formats. For just "${requested[0]}", use the dedicated endpoint instead.`,
       );
     }
 
@@ -433,7 +513,7 @@ export const takeSnapshot = createServerFn({ method: 'POST' })
     const { result, browserMs, meta } = await callQuickAction<SnapshotPayload>(
       '/snapshot',
       body,
-      'Snapshot'
+      'Snapshot',
     );
 
     return {
@@ -480,7 +560,7 @@ export const compareBindingAndRest = createServerFn({ method: 'POST' })
       const { result, browserMs } = await callQuickAction<string>(
         '/markdown',
         { url },
-        'Markdown fetch (REST)'
+        'Markdown fetch (REST)',
       );
       return {
         markdown: result,
@@ -505,19 +585,32 @@ export const compareBindingAndRest = createServerFn({ method: 'POST' })
       }
 
       try {
-        const response = await binding.quickAction('markdown', { url });
+        return await admitted('binding', 1, async (id) => {
+          checkedAction('/markdown', { url });
+          const response = await binding.quickAction('markdown', {
+            url,
+            gotoOptions: { waitUntil: 'domcontentloaded', timeout: 15_000 },
+          });
 
-        if (!response.ok) {
-          throw await toApiError(response, 'Markdown fetch (binding)');
-        }
+          if (!response.ok) {
+            throw await toApiError(response, 'Markdown fetch (binding)');
+          }
 
-        const envelope = (await response.json()) as Envelope<string>;
-        return {
-          markdown: envelope.result,
-          browserMs: readBrowserMs(response),
-          wallMs: Date.now() - started,
-          error: null as string | null,
-        };
+          const envelope = await providerJson<Envelope<string>>(response);
+          if (envelope.success !== true && envelope.success !== false)
+            throw new Error(
+              'Binding returned an invalid envelope; capacity remains reserved',
+            );
+          if (envelope.success === false)
+            throw new ProviderTerminalError('Binding returned a failed action');
+          await requiredBudget().complete(id);
+          return {
+            markdown: envelope.result,
+            browserMs: readBrowserMs(response),
+            wallMs: Date.now() - started,
+            error: null as string | null,
+          };
+        });
       } catch (e: any) {
         return {
           markdown: null,
@@ -554,7 +647,7 @@ export interface AccessibilityNode {
 
 export const fetchAccessibilityTree = createServerFn({ method: 'POST' })
   .inputValidator(
-    (data: { url: string; interestingOnly?: boolean; root?: string }) => data
+    (data: { url: string; interestingOnly?: boolean; root?: string }) => data,
   )
   .handler(async ({ data }) => {
     await enforceRateLimit('quickAction');
@@ -596,7 +689,7 @@ export const startCrawl = createServerFn({ method: 'POST' })
     const { result, browserMs } = await callQuickAction<string>(
       '/crawl',
       body,
-      'Crawl start'
+      'Crawl start',
     );
 
     return { jobId: result, browserMs, appliedOptions: body };
@@ -636,8 +729,12 @@ const CRAWL_RECORD_STATUSES = new Set([
 
 export const getCrawlStatus = createServerFn({ method: 'POST' })
   .inputValidator(
-    (data: { jobId: string; status?: string; cursor?: number; limit?: number }) =>
-      data
+    (data: {
+      jobId: string;
+      status?: string;
+      cursor?: number;
+      limit?: number;
+    }) => data,
   )
   .handler(async ({ data }) => {
     // Job ids are API-generated UUIDs. Encode rather than interpolating raw,
@@ -645,8 +742,13 @@ export const getCrawlStatus = createServerFn({ method: 'POST' })
     if (!/^[a-zA-Z0-9-]{1,64}$/.test(data.jobId ?? '')) {
       throw new Error('Invalid crawl job id.');
     }
+    await enforceRateLimit('quickAction');
+    if (!(await requiredBudget().known(data.jobId)))
+      throw new Error('Unknown demo crawl job');
 
-    const url = new URL(`${getBaseUrl()}/crawl/${encodeURIComponent(data.jobId)}`);
+    const url = new URL(
+      `${getBaseUrl()}/crawl/${encodeURIComponent(data.jobId)}`,
+    );
 
     if (data.status && CRAWL_RECORD_STATUSES.has(data.status)) {
       url.searchParams.set('status', data.status);
@@ -657,18 +759,26 @@ export const getCrawlStatus = createServerFn({ method: 'POST' })
     if (typeof data.limit === 'number' && Number.isFinite(data.limit)) {
       url.searchParams.set(
         'limit',
-        String(Math.min(Math.max(1, Math.floor(data.limit)), 100))
+        String(Math.min(Math.max(1, Math.floor(data.limit)), 100)),
       );
     }
 
     const response = await fetch(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${getEnvVar('CF_API_TOKEN')}` },
+      signal: AbortSignal.timeout(
+        budgetPolicy((env as Env).PUBLIC_DEMO_BUDGET).requestTimeoutMs,
+      ),
     });
 
     if (!response.ok) throw await toApiError(response, 'Crawl status check');
 
-    const envelope = (await response.json()) as Envelope<CrawlJob>;
+    const envelope = await deadline(
+      providerJson<Envelope<CrawlJob>>(response),
+      budgetPolicy((env as Env).PUBLIC_DEMO_BUDGET).requestTimeoutMs,
+    );
+    if (!envelope.success) throw new Error('Crawl status failed');
+    await requiredBudget().terminal(data.jobId, envelope.result.status);
 
     return {
       job: envelope.result,
